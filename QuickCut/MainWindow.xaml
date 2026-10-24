@@ -138,7 +138,7 @@
                 <ColumnDefinition x:Name="RailCol" Width="60"/>
                 <ColumnDefinition Width="*" MinWidth="480"/>
                 <ColumnDefinition Width="8"/>
-                <ColumnDefinition x:Name="InspectorCol" Width="310" MinWidth="270" MaxWidth="560"/>
+                <ColumnDefinition x:Name="InspectorCol" Width="300" MinWidth="270" MaxWidth="560"/>
             </Grid.ColumnDefinitions>
 
             <!-- Rail -->
@@ -221,7 +221,7 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*" MinHeight="180"/>
                     <RowDefinition Height="14"/>
-                    <RowDefinition x:Name="LowerRow" Height="250" MinHeight="236"/>
+                    <RowDefinition x:Name="LowerRow" Height="270" MinHeight="236" MaxHeight="400"/>
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
@@ -473,7 +473,7 @@
                                     <StackPanel Margin="14,0,0,0" VerticalAlignment="Center">
                                         <TextBlock Text="預估檔案大小" Foreground="{DynamicResource Text3Brush}" FontSize="11"/>
                                         <TextBlock FontFamily="{StaticResource DisplayFont}" Margin="0,1,0,0" TextWrapping="Wrap">
-                                            <Run x:Name="EstText" Text="—" FontSize="22" FontWeight="SemiBold"/><Run x:Name="LimitRun" Text=" / 30 MB" FontSize="12" Foreground="{DynamicResource Text2Brush}"/>
+                                            <Run x:Name="EstText" Text="—" FontSize="22" FontWeight="SemiBold"/><Run x:Name="LimitRun" Text=" / 100 MB" FontSize="12" Foreground="{DynamicResource Text2Brush}"/>
                                         </TextBlock>
                                         <TextBlock x:Name="RateText" Text="—" FontFamily="{StaticResource MonoFont}" FontSize="11" Foreground="{DynamicResource RateBrush}" TextWrapping="Wrap" Margin="0,2,0,0"/>
                                     </StackPanel>

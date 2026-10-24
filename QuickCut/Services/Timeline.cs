@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Windows.Media.Imaging;
 
 namespace QuickCut.Services;
 
@@ -23,7 +22,7 @@ public sealed class Segment
     // Filled in asynchronously by MediaAnalyzer; read by the timeline control.
     public float[] Peaks { get; set; }
     public double PeakInterval { get; set; }
-    public IReadOnlyList<BitmapSource> Thumbs { get; set; }
+    public ThumbnailStrip Thumbs { get; set; }
 }
 
 /// <summary>A cut range inside one segment, in that file's own time.</summary>

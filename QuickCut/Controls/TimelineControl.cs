@@ -23,10 +23,12 @@ public sealed class TimelineControl : FrameworkElement
     const double MinRange = 0.1;
     const double MinViewLength = 1;
     const double EdgeZone = 24;
+    const double MaxFilmH = 90; // taller tiles would also be wider, leaving only a few on screen
 
-    // The filmstrip and waveform share whatever height the layout gives the control (roughly 2:1).
+    // The filmstrip and waveform share whatever height the layout gives the control (roughly 2:1);
+    // past the filmstrip's limit the extra height all goes to the waveform.
     double Tracks => Math.Max(50, ActualHeight - FilmTop - 10);
-    double FilmH => Math.Round(Tracks * 0.66);
+    double FilmH => Math.Min(MaxFilmH, Math.Round(Tracks * 0.66));
     double WaveTop => FilmTop + FilmH + 4;
     double WaveH => Tracks - FilmH - 4;
 
@@ -184,25 +186,34 @@ public sealed class TimelineControl : FrameworkElement
         for (int i = 0; i < timeline.Segments.Count; i++)
         {
             var s = timeline.Segments[i];
-            if (s.End < ViewStart || s.Offset > ViewEnd) continue;
+            if (s.End < ViewStart || s.Offset > ViewEnd)
+            {
+                s.Thumbs?.Want(Array.Empty<double>(), 0);
+                continue;
+            }
             double x0 = X(s.Offset) + (i > 0 ? 1.5 : 0);
             double x1 = X(s.End) - (i < timeline.Segments.Count - 1 ? 1.5 : 0);
             var rect = new Rect(x0, FilmTop, Math.Max(1, x1 - x0), FilmH);
             dc.PushClip(new RectangleGeometry(rect, 7, 7));
             dc.DrawRectangle(SegFill(i), null, rect);
-            var thumbs = s.Thumbs;
-            if (thumbs != null && thumbs.Count > 0)
+            var strip = s.Thumbs;
+            if (strip != null && s.Media.Width > 0 && s.Media.Height > 0)
             {
-                double tw = FilmH * thumbs[0].PixelWidth / thumbs[0].PixelHeight;
+                // Each tile asks for the frame at its middle and shows the nearest one made so far.
+                double tw = FilmH * s.Media.Width / s.Media.Height;
+                double tileSeconds = tw / rect.Width * s.Duration;
                 int n = (int)Math.Ceiling(rect.Width / tw);
                 int k0 = Math.Max(0, (int)Math.Floor((left - rect.X) / tw));
                 int k1 = Math.Min(n, (int)Math.Ceiling((right - rect.X) / tw));
+                var times = new double[Math.Max(0, k1 - k0)];
                 for (int k = k0; k < k1; k++)
                 {
-                    int idx = (int)((k + 0.5) * tw / rect.Width * thumbs.Count);
-                    idx = Math.Max(0, Math.Min(thumbs.Count - 1, idx));
-                    dc.DrawImage(thumbs[idx], new Rect(rect.X + k * tw, FilmTop, tw, FilmH));
+                    double t = (k + 0.5) * tileSeconds;
+                    times[k - k0] = t;
+                    var img = strip.Nearest(t);
+                    if (img != null) dc.DrawImage(img, new Rect(rect.X + k * tw, FilmTop, tw, FilmH));
                 }
+                strip.Want(times, tileSeconds);
             }
             dc.DrawRectangle(FilmShade, null, rect);
             DrawSegmentLabel(dc, i, s, Math.Max(rect.Left, left), Math.Min(rect.Right, right), ppd);

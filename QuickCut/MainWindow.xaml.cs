@@ -19,6 +19,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
+using System.Windows.Threading;
 using QuickCut.Services;
 using Microsoft.Win32;
 using Timeline = QuickCut.Services.Timeline;
@@ -143,6 +144,7 @@ public partial class MainWindow : Window
             exportCts.Cancel();
         }
         analysisCts?.Cancel();
+        DisposeThumbnails();
         player.Dispose();
         settings.InspectorWidth = InspectorCol.ActualWidth;
         settings.LowerHeight = LowerRow.ActualHeight;
@@ -160,7 +162,7 @@ public partial class MainWindow : Window
     void ApplySettingsToUi()
     {
         loadingUi = true;
-        if (settings.LimitMB < 1) settings.LimitMB = 30;
+        if (settings.LimitMB < 1) settings.LimitMB = 100;
         CodecH264.IsChecked = true;
         (settings.TargetHeight == 720 ? Res720 : settings.TargetHeight == 1080 ? Res1080 : Res0).IsChecked = true;
         (settings.RemoveAudio ? AudioRemove : AudioKeep).IsChecked = true;
@@ -168,7 +170,7 @@ public partial class MainWindow : Window
         LimitBox.Text = settings.LimitMB.ToString("0.#", CultureInfo.InvariantCulture);
         LosslessSwitch.IsChecked = settings.Lossless;
         InspectorCol.Width = new GridLength(Clamp(settings.InspectorWidth, InspectorCol.MinWidth, InspectorCol.MaxWidth));
-        LowerRow.Height = new GridLength(Math.Max(LowerRow.MinHeight, settings.LowerHeight));
+        LowerRow.Height = new GridLength(Math.Min(LowerRow.MaxHeight, Math.Max(LowerRow.MinHeight, settings.LowerHeight)));
         ApplyLosslessUi();
         UpdateOutputDirText();
         UpdateMuteUi();
@@ -343,11 +345,18 @@ public partial class MainWindow : Window
         foreach (var s in timeline.Segments)
         {
             var prev = old.FirstOrDefault(o => o.Media == s.Media);
-            if (prev == null) continue;
+            if (prev == null)
+            {
+                s.Thumbs = new ThumbnailStrip(s.Media);
+                s.Thumbs.Changed += OnThumbnailReady;
+                continue;
+            }
             s.Peaks = prev.Peaks;
             s.PeakInterval = prev.PeakInterval;
             s.Thumbs = prev.Thumbs;
         }
+        foreach (var o in old.Where(o => !medias.Contains(o.Media)))
+            o.Thumbs?.Dispose();
         var p = place?.Invoke(timeline);
         double playhead = 0;
         if (p != null)
@@ -427,6 +436,7 @@ public partial class MainWindow : Window
     void CloseAll()
     {
         analysisCts?.Cancel();
+        DisposeThumbnails();
         player.Unload();
         timeline = null;
         manualOrder = false;
@@ -694,6 +704,7 @@ public partial class MainWindow : Window
         var cts = analysisCts = new CancellationTokenSource();
         try
         {
+            // Thumbnails aren't made here: the timeline asks each segment's ThumbnailStrip for the ones it shows.
             foreach (var s in tl.Segments.Where(x => x.Peaks == null))
             {
                 var peaks = await Task.Run(() => MediaAnalyzer.WaveformAsync(s.Media, cts.Token));
@@ -701,14 +712,28 @@ public partial class MainWindow : Window
                 s.Peaks = peaks;
                 TimelineView.InvalidateVisual();
             }
-            foreach (var s in tl.Segments.Where(x => x.Thumbs == null))
-            {
-                s.Thumbs = await Task.Run(() => MediaAnalyzer.ThumbnailsAsync(s.Media, 90, cts.Token));
-                TimelineView.InvalidateVisual();
-            }
         }
         catch (OperationCanceledException) { }
-        catch (Exception ex) { AppendLog("縮圖/波形產生失敗: " + ex.Message); }
+        catch (Exception ex) { AppendLog("波形產生失敗: " + ex.Message); }
+    }
+
+    int thumbRedrawQueued;
+
+    /// <summary>Redraws the timeline once for however many thumbnails arrived since the last redraw.</summary>
+    void OnThumbnailReady()
+    {
+        if (Interlocked.Exchange(ref thumbRedrawQueued, 1) == 1) return;
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+        {
+            thumbRedrawQueued = 0;
+            TimelineView.InvalidateVisual();
+        }));
+    }
+
+    void DisposeThumbnails()
+    {
+        if (timeline == null) return;
+        foreach (var s in timeline.Segments) s.Thumbs?.Dispose();
     }
 
     // ───────────────────────── Playback ─────────────────────────

@@ -9,14 +9,14 @@ public enum ThemeMode { System, Light, Dark }
 /// <summary>User preferences, stored next to the executable as QuickCut.settings.xml.</summary>
 public sealed class Settings
 {
-    public double LimitMB = 30;
+    public double LimitMB = 100;
     public bool RemoveAudio;
-    public int TargetHeight = 1080;
+    public int TargetHeight; // 0 = keep source resolution
     public bool Lossless;
     public string OutputDir = "";
     public string EncoderId = "";
-    public double InspectorWidth = 310;
-    public double LowerHeight = 250;
+    public double InspectorWidth = 300;
+    public double LowerHeight = 270;
     public bool PreviewMuted;
     public ThemeMode Theme = ThemeMode.System;
     public bool RailVisible = true;
