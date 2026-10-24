@@ -78,7 +78,7 @@ powershell -ExecutionPolicy Bypass -File publish.ps1 [-Zip] [-Version 1.2.0] [-F
 Debug 版設定環境變數 `DC_SNAPSHOT=<資料夾>` 會每 2 秒把視窗畫面存成 PNG（不需螢幕擷取）。
 
 ## 回報問題與修改
-本專案不接受 issue 與 pull request。需要修改的話歡迎 fork 後自行調整。
+本專案不接受 Issue 與 Pull request。需要修改的話歡迎 fork 後自行調整。
 
 ## 授權
 QuickCut 以 [MIT](LICENSE) 授權。附帶的 FFmpeg 為 gyan.dev 的 shared build，以 GPLv3 授權，詳見 [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt)。
