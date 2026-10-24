@@ -40,11 +40,8 @@ jobs:
           ref: ${{ inputs.ref }}
           fetch-depth: 0 # publish.ps1 derives the version from tags
 
-      - uses: actions/cache@v6
-        with:
-          path: ffmpeg-*-full_build-shared
-          key: ffmpeg-${{ hashFiles('QuickCut/ffmpeg.json') }}
-
+      # No cache for FFmpeg on purpose: get-ffmpeg.ps1 downloads it and checks the SHA256 pinned in
+      # ffmpeg.json on every build, so a restored (unverified) folder can never end up in a release.
       - name: Build and package
         id: publish
         shell: pwsh
