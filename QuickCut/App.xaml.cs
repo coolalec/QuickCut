@@ -1,8 +1,10 @@
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
+using QuickCut.Services;
 
 namespace QuickCut;
 
@@ -21,6 +23,11 @@ public partial class App : Application
         SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
         DispatcherUnhandledException += OnUnhandled;
         AppDomain.CurrentDomain.UnhandledException += (_, args) => WriteCrashLog(args.ExceptionObject as Exception);
+        // Right after an update the previous QuickCut may still be exiting and holding QuickCut.exe.old; retry a few times.
+        Task.Run(async () =>
+        {
+            for (int i = 0; i < 5 && !Updater.CleanUp(); i++) await Task.Delay(2000);
+        });
         base.OnStartup(e);
     }
 

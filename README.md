@@ -12,6 +12,7 @@
 - 需求：Windows 10（1903 以後）或 Windows 11，64 位元。
 - 程式沒有數位簽章，第一次執行時 Windows SmartScreen 可能跳出「Windows 已保護您的電腦」，按「其他資訊」→「仍要執行」。
 - 請解壓到可寫入的資料夾（例如桌面或 D:\Tools），設定才存得下來。
+- 更新：有新版本時，「關於」視窗會出現「立即更新」，按下就會下載新版、核對 SHA256、替換程式與 FFmpeg 後自動重新開啟（設定與開啟中的影片會保留）。資料夾無法寫入或更新失敗時，會改成「前往下載」讓你手動下載。
 - 驗證下載檔（選用）：每個 zip 都有 GitHub 簽發的建置來源證明，可用 [GitHub CLI](https://cli.github.com/) 確認它確實由本專案的 GitHub Actions 建置：
   ```powershell
   gh attestation verify QuickCut-<版本>-win64.zip --repo coolalec/QuickCut
@@ -69,7 +70,7 @@ powershell -ExecutionPolicy Bypass -File publish.ps1 [-Zip] [-Version 1.2.0] [-F
   git tag v1.3.0
   git push origin v1.3.0
   ```
-- 程式內的「檢查更新」只看正式版，不會通知 pre-release。
+- 程式內的「檢查更新」只看正式版，不會通知 pre-release。「立即更新」會下載 Release 裡的 `QuickCut-*-win64.zip`，用 GitHub 提供的 digest（沒有的話用 release notes 裡的 SHA256）驗證後才安裝：把要替換的檔案改名成 `*.old`、複製新檔，失敗就全部還原；`*.old` 在下次啟動時刪除。
 
 ### CI（GitHub Actions）
 - `build.yml`：push 到 main 時建置並發 pre-release；推 `vX.Y.Z` tag 或由 promote 呼叫時發正式 Release。每次建置也會留下 30 天的 artifact。

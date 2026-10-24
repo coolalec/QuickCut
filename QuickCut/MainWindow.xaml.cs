@@ -11,6 +11,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
@@ -1776,7 +1777,9 @@ public partial class MainWindow : Window
 
     bool checkingUpdate;
     bool ffmpegVersionRead;
-    string releaseUrl;
+    UpdateResult latestRelease;
+    bool updating;
+    bool selfUpdateFailed; // after a failed install the button only opens the release page
 
     void AboutButton_Click(object sender, RoutedEventArgs e)
     {
@@ -1813,25 +1816,29 @@ public partial class MainWindow : Window
 
     async void CheckForUpdates()
     {
-        if (checkingUpdate) return;
+        if (checkingUpdate || updating) return;
         checkingUpdate = true;
         RecheckButton.IsEnabled = false;
         ShowUpdateState(null);
 
         var r = await UpdateChecker.CheckAsync();
         checkingUpdate = false;
-        RecheckButton.IsEnabled = true;
+        RecheckButton.IsEnabled = !updating;
         ShowUpdateState(r);
         if (r.State == UpdateState.Available) AppendLog($"有新版本 {r.LatestTag}（目前 v{UpdateChecker.DisplayVersion}）: {r.ReleaseUrl}");
         else if (r.State == UpdateState.Unknown) AppendLog("無法檢查更新: " + r.Error);
     }
 
+    bool CanInstall(UpdateResult r) =>
+        !selfUpdateFailed && Updater.CanSelfUpdate && r?.AssetUrl != null && r.AssetSha256 != null;
+
     void ShowUpdateState(UpdateResult r)
     {
-        releaseUrl = r?.ReleaseUrl;
+        latestRelease = r;
         bool available = r?.State == UpdateState.Available;
         UpdateBadge.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
         DownloadUpdateButton.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
+        SetDownloadButton(CanInstall(r));
         AboutButton.ToolTip = available ? $"關於 QuickCut（有新版本 {r.LatestTag}）" : "關於 QuickCut";
         UpdateText.ToolTip = r?.State == UpdateState.Unknown ? r.Error : null;
 
@@ -1868,7 +1875,73 @@ public partial class MainWindow : Window
 
     void AboutGitHub_Click(object sender, RoutedEventArgs e) => OpenUrl(UpdateChecker.RepoUrl);
 
-    void DownloadUpdate_Click(object sender, RoutedEventArgs e) => OpenUrl(releaseUrl ?? UpdateChecker.RepoUrl + "/releases/latest");
+    void SetDownloadButton(bool install)
+    {
+        DownloadUpdateButton.Content = install ? "立即更新" : "前往下載";
+        AutomationProperties.SetName(DownloadUpdateButton, install ? "下載並安裝新版本" : "前往下載新版本");
+    }
+
+    async void DownloadUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        var release = latestRelease;
+        if (!CanInstall(release))
+        {
+            OpenUrl(release?.ReleaseUrl ?? UpdateChecker.RepoUrl + "/releases/latest");
+            return;
+        }
+        if (exportCts != null)
+        {
+            ShowResult(false, "正在輸出影片", "請等輸出完成後再更新。", warn: true);
+            return;
+        }
+
+        updating = true;
+        DownloadUpdateButton.IsEnabled = RecheckButton.IsEnabled = false;
+        UpdateText.ToolTip = null;
+        UpdateText.Text = "正在下載 " + release.LatestTag + "…";
+        AppendLog($"下載更新 {release.LatestTag}: {release.AssetUrl}");
+        try
+        {
+            var progress = new Progress<double>(p => UpdateText.Text = $"正在下載 {release.LatestTag}… {p:0%}");
+            var newDir = await Updater.DownloadAsync(release, progress);
+            UpdateText.Text = "正在安裝…";
+            var appDir = AppDomain.CurrentDomain.BaseDirectory;
+            await Task.Run(() => Updater.Apply(newDir, appDir));
+            AppendLog("已安裝 " + release.LatestTag);
+
+            if (exportCts != null) // started while downloading; restarting would cut it off
+            {
+                UpdateText.Text = "已安裝 " + release.LatestTag + "，重新啟動後生效";
+                DownloadUpdateButton.Visibility = Visibility.Collapsed;
+                return;
+            }
+            // Reopen the same videos in the new version once this window has saved its settings and closed.
+            var args = string.Join(" ", (timeline?.Segments ?? Enumerable.Empty<Segment>()).Select(s => "\"" + s.Media.Path + "\""));
+            var exe = Path.Combine(appDir, "QuickCut.exe");
+            Closed += (_, _) =>
+            {
+                try { Process.Start(new ProcessStartInfo(exe, args) { UseShellExecute = false, WorkingDirectory = appDir }); }
+                catch (Exception ex) { MessageBox.Show("已更新到 " + release.LatestTag + "，但無法重新啟動：" + ex.Message, "QuickCut"); }
+            };
+            Close();
+        }
+        catch (Exception ex)
+        {
+            AppendLog("更新失敗: " + ex.Message);
+            selfUpdateFailed = true;
+            UpdateGlyph.Text = "";
+            UpdateText.Text = "更新失敗";
+            UpdateText.ToolTip = ex.Message;
+            UpdateGlyph.SetResourceReference(ForegroundProperty, "Text3Brush");
+            UpdateText.SetResourceReference(ForegroundProperty, "Text3Brush");
+            SetDownloadButton(false);
+        }
+        finally
+        {
+            updating = false;
+            DownloadUpdateButton.IsEnabled = RecheckButton.IsEnabled = true;
+        }
+    }
 
     void OpenUrl(string url)
     {
