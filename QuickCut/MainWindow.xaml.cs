@@ -1875,6 +1875,13 @@ public partial class MainWindow : Window
 
     void AboutGitHub_Click(object sender, RoutedEventArgs e) => OpenUrl(UpdateChecker.RepoUrl);
 
+    // The release zip ships LICENSE.txt next to the exe; a dev build falls back to the copy on GitHub.
+    void AboutLicense_Click(object sender, RoutedEventArgs e)
+    {
+        var local = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "LICENSE.txt");
+        OpenUrl(File.Exists(local) ? local : UpdateChecker.RepoUrl + "/blob/main/LICENSE");
+    }
+
     void SetDownloadButton(bool install)
     {
         DownloadUpdateButton.Content = install ? "立即更新" : "前往下載";

@@ -1,7 +1,9 @@
 QuickCut third-party notices
 ============================
 
-QuickCut itself is licensed under the MIT License (see LICENSE.txt).
+QuickCut itself is Copyright (C) 2026 coolalec and licensed under the GNU
+General Public License version 3 (see LICENSE.txt). Versions up to and
+including 1.0.0 were released under the MIT License.
 
 FFmpeg
 ------
@@ -21,3 +23,12 @@ Corresponding source code:
 
 QuickCut runs ffmpeg.exe and ffprobe.exe as separate programs; it does not link
 to FFmpeg. FFmpeg is a trademark of Fabrice Bellard.
+
+Patents
+-------
+Some audio and video formats that QuickCut reads and writes through FFmpeg,
+such as H.264/AVC, H.265/HEVC and AAC, may be covered by patents in some
+countries. The licenses above cover copyright only. No patent license of any
+kind is granted, and there is no assurance that using or distributing these
+formats does not infringe third-party patents. Check the rules where you live
+and, if needed, obtain a license from the patent holders or patent pools.

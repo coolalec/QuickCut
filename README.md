@@ -87,4 +87,13 @@ Debug 版設定環境變數 `DC_SNAPSHOT=<資料夾>` 會每 2 秒把視窗畫�
 本專案不接受 Issue 與 Pull request。需要修改的話歡迎 fork 後自行調整。
 
 ## 授權
-QuickCut 以 [MIT](LICENSE) 授權。附帶的 FFmpeg 為 gyan.dev 的 shared build，以 GPLv3 授權，詳見 [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt)。
+Copyright © 2026 coolalec
+
+QuickCut 是自由軟體，以 [GNU General Public License 第 3 版](LICENSE)（GPLv3）授權：你可以使用、修改、轉發，也可以商業使用；但轉發本程式或修改後的版本時，必須同樣以 GPLv3 授權並提供完整原始碼。本程式不提供任何擔保，詳見授權條款。
+
+v1.0.0（含）以前的版本以 MIT 授權發布，取得那些版本的人仍可依 MIT 使用。
+
+附帶的 FFmpeg 為 gyan.dev 的 shared build，同樣以 GPLv3 授權，詳見 [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt)。
+
+## 專利聲明
+QuickCut 透過 FFmpeg 讀取與輸出的部分影音格式（例如 H.264/AVC、H.265/HEVC、AAC）在某些國家或地區可能受專利保護。本專案的授權只涵蓋著作權，不包含任何第三方專利的授權，也不保證使用或散佈這些格式不會侵害他人專利。請自行確認所在地的相關規定，必要時向專利權人或專利池取得授權。

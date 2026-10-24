@@ -191,12 +191,13 @@
                                         <TextBlock Grid.Row="1" Text="GitHub" Foreground="{DynamicResource Text3Brush}" VerticalAlignment="Center"/>
                                         <TextBlock Grid.Row="2" Text="FFmpeg" Foreground="{DynamicResource Text3Brush}" VerticalAlignment="Top" Margin="0,3,0,0"/>
                                         <TextBlock Grid.Row="3" Text="授權" Foreground="{DynamicResource Text3Brush}" VerticalAlignment="Center"/>
-                                        <TextBlock Grid.Row="0" Grid.Column="1" Text="coolalec" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Row="0" Grid.Column="1" Text="© 2026 coolalec" VerticalAlignment="Center"/>
                                         <Button Grid.Row="1" Grid.Column="1" Style="{StaticResource LinkButton}" FontSize="12.5" HorizontalAlignment="Left"
                                                 Content="github.com/coolalec/QuickCut" AutomationProperties.Name="在瀏覽器開啟 GitHub 專案頁" ToolTip="https://github.com/coolalec/QuickCut" Click="AboutGitHub_Click"/>
                                         <TextBlock x:Name="AboutFfmpeg" Grid.Row="2" Grid.Column="1" Text="讀取中…" FontFamily="{StaticResource MonoFont}" FontSize="11"
                                                    TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,3"/>
-                                        <TextBlock Grid.Row="3" Grid.Column="1" Text="MIT，FFmpeg 為 GPLv3" VerticalAlignment="Center"/>
+                                        <Button Grid.Row="3" Grid.Column="1" Style="{StaticResource LinkButton}" FontSize="12.5" HorizontalAlignment="Left"
+                                                Content="GPLv3，不提供任何擔保" AutomationProperties.Name="檢視 GPLv3 授權條款" ToolTip="檢視授權條款（LICENSE.txt）" Click="AboutLicense_Click"/>
                                     </Grid>
 
                                     <Border Height="1" Background="{DynamicResource LineBrush}" Margin="0,8,0,10"/>
