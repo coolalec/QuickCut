@@ -11,15 +11,17 @@ public sealed class Settings
 {
     public double LimitMB = 100;
     public bool RemoveAudio;
+    public TimelapseAudio TimelapseAudio; // sound of sped-up regions
     public int TargetHeight; // 0 = keep source resolution
     public bool Lossless;
     public string OutputDir = "";
     public string EncoderId = "";
     public double InspectorWidth = 300;
-    public double LowerHeight = 270;
+    public double LowerHeight = 260;
     public bool PreviewMuted;
     public ThemeMode Theme = ThemeMode.System;
     public bool RailVisible = true;
+    public bool SourceCollapsed, OutputCollapsed, EncodeCollapsed; // folded inspector sections
 
     static string FilePath => Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "QuickCut.settings.xml");
 

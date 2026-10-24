@@ -186,7 +186,7 @@ sealed class AudioSession : IDisposable
         var seek = local > 0 ? $"-ss {TimeFormat.Ff(local)} " : "";
         var args = $"-hide_banner -loglevel error -nostdin {seek}-i {ProcessUtil.Quote(m.Path)} -map 0:a:0 -vn -sn -dn -ac 2 -ar {Rate} {tempo}-f s16le pipe:1";
         decoder = new Process { StartInfo = ProcessUtil.CreateInfo(FfmpegLocator.FfmpegPath, args) };
-        decoder.Start();
+        ProcessUtil.Start(decoder);
         decoder.ErrorDataReceived += (_, _) => { };
         decoder.BeginErrorReadLine();
         pcm = decoder.StandardOutput.BaseStream;

@@ -55,6 +55,11 @@
     <SolidColorBrush x:Key="TlWaveIdle" Color="#B4BED6"/>
     <SolidColorBrush x:Key="TlWaveActive" Color="#4F7BF0"/>
     <SolidColorBrush x:Key="TlDim" Color="#8CF3F5FA"/>
+    <!-- Sped-up regions (amber band, edges and label) and cut regions (hatch and edges) -->
+    <SolidColorBrush x:Key="TlRegion" Color="#4DF59E0B"/>
+    <SolidColorBrush x:Key="TlRegionEdge" Color="#D97706"/>
+    <SolidColorBrush x:Key="TlRegionText" Color="#92400E"/>
+    <SolidColorBrush x:Key="TlCutEdge" Color="#7A8499"/>
     <SolidColorBrush x:Key="TlHead" Color="#151A27"/>
     <SolidColorBrush x:Key="RingTrackBrush" Color="#1A0F172A"/>
     <Color x:Key="WindowBorderColor">#D5DAE5</Color>

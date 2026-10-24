@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -13,7 +15,8 @@ namespace QuickCut.Controls;
 /// Ruler, per-file filmstrip, waveform, in/out range with draggable handles, and playhead.
 /// Shows a window of the timeline (all of it by default) that can be zoomed and scrolled:
 /// Ctrl+wheel zooms at the cursor, the wheel scrolls, and dragging past an edge scrolls along.
-/// Clicking or dragging elsewhere scrubs. Right-clicking moves the nearer of the in/out points to the clicked time.
+/// Clicking or dragging elsewhere scrubs.
+/// Sped-up and cut regions show as bands: their edges drag, Alt+drag moves a band, Shift+drag draws a new one.
 /// </summary>
 public sealed class TimelineControl : FrameworkElement
 {
@@ -43,6 +46,10 @@ public sealed class TimelineControl : FrameworkElement
     Brush WaveActive => R("TlWaveActive");
     Brush Dim => R("TlDim");
     Brush LabelBack => R("TlLabelBack");
+    Brush RegionFill => R("TlRegion");
+    Brush RegionEdge => R("TlRegionEdge");
+    Brush RegionText => R("TlRegionText");
+    Brush CutEdge => R("TlCutEdge");
     static readonly Brush SelFill = Frozen("#225B8CFF");
     static readonly Pen SelPen = FrozenPen("#E05B8CFF", 1.5);
     static readonly Pen SelGlow1 = FrozenPen("#1A5B8CFF", 8);
@@ -62,9 +69,13 @@ public sealed class TimelineControl : FrameworkElement
         FilmShade = g;
     }
 
-    enum Drag { None, Scrub, In, Out }
+    enum Drag { None, Scrub, In, Out, RegionStart, RegionEnd, RegionMove, NewRegion }
     Drag drag;
     Timeline timeline;
+    IList<TimeRegion> regions = new List<TimeRegion>();
+    TimeRegion dragRegion;
+    double boundLo, boundHi;                      // where the dragged region or the new range may reach
+    double pendingStart = double.NaN, pendingEnd; // range drawn with Shift, kept on screen until ClearPending
     double position, inPoint, outPoint;
     double viewStart, viewLength; // viewLength 0 = whole timeline
     double lastDragX;
@@ -82,6 +93,28 @@ public sealed class TimelineControl : FrameworkElement
 
     public event Action<double> SeekRequested;
     public event Action<double, double> RangeChanged;
+
+    /// <summary>A region was resized or moved by dragging.</summary>
+    public event Action RegionsChanged;
+
+    /// <summary>A range was drawn with Shift+drag; the owner asks what to make of it, then calls <see cref="ClearPending"/>.</summary>
+    public event Action<double, double> NewRegionRequested;
+
+    /// <summary>Shared with the owner, which adds and removes regions; this control only resizes and moves them.</summary>
+    public IList<TimeRegion> Regions
+    {
+        get => regions;
+        set { regions = value ?? new List<TimeRegion>(); InvalidateVisual(); }
+    }
+
+    public void ClearPending()
+    {
+        pendingStart = double.NaN;
+        InvalidateVisual();
+    }
+
+    TimeRegion RegionAt(double t) => regions.FirstOrDefault(r => r.Contains(t));
+    bool InCut(double t) => regions.Any(r => r.Kind == RegionKind.Cut && r.Contains(t));
 
     /// <summary>Raised when the visible window changes; the argument is true when the user zoomed or scrolled it directly.</summary>
     public event Action<bool> ViewChanged;
@@ -231,13 +264,15 @@ public sealed class TimelineControl : FrameworkElement
             if (seg.Peaks == null || seg.Peaks.Length == 0) continue;
             int pi = Math.Min(seg.Peaks.Length - 1, (int)(local / seg.PeakInterval));
             double hgt = Math.Max(1, seg.Peaks[pi] * (WaveH - 4));
-            bool inside = t >= inPoint && t <= outPoint;
+            bool inside = t >= inPoint && t <= outPoint && !InCut(t);
             dc.DrawRoundedRectangle(inside ? WaveActive : WaveIdle, null, new Rect(x, mid - hgt / 2, 2, hgt), 1, 1);
         }
 
+        double top = FilmTop - 3, bottom = WaveTop + WaveH + 3;
+        DrawRegions(dc, left, right, bottom - 3, ppd);
+
         // Dim outside the selection, then the glowing selection box and handles.
         double sx = X(inPoint), ex = X(outPoint);
-        double top = FilmTop - 3, bottom = WaveTop + WaveH + 3;
         if (sx > left) dc.DrawRectangle(Dim, null, new Rect(left, FilmTop, Math.Min(sx, right) - left, bottom - 3 - FilmTop));
         if (ex < right) dc.DrawRectangle(Dim, null, new Rect(Math.Max(ex, left), FilmTop, right - Math.Max(ex, left), bottom - 3 - FilmTop));
 
@@ -271,6 +306,70 @@ public sealed class TimelineControl : FrameworkElement
         tri.Freeze();
         dc.DrawGeometry(head, null, tri);
         dc.Pop();
+    }
+
+    /// <summary>Sped-up regions as amber bands labelled "×12.5 → 02:00", cut ones dimmed and hatched, plus a range being drawn.</summary>
+    void DrawRegions(DrawingContext dc, double left, double right, double bottom, double ppd)
+    {
+        foreach (var r in regions)
+        {
+            if (r.End < ViewStart || r.Start > ViewEnd) continue;
+            double x0 = X(r.Start), x1 = X(r.End);
+            var band = new Rect(x0, FilmTop, Math.Max(1, x1 - x0), bottom - FilmTop);
+            bool cut = r.Kind == RegionKind.Cut;
+            var edge = cut ? CutEdge : RegionEdge;
+            if (cut)
+            {
+                dc.DrawRectangle(Dim, null, band);
+                dc.DrawRectangle(Hatch(((SolidColorBrush)CutEdge).Color), null, band);
+            }
+            else dc.DrawRectangle(RegionFill, null, band);
+            dc.DrawRectangle(edge, null, new Rect(x0 - 1, FilmTop, 2, band.Height));
+            dc.DrawRectangle(edge, null, new Rect(x1 - 1, FilmTop, 2, band.Height));
+
+            double visLeft = Math.Max(x0, left), visRight = Math.Min(x1, right);
+            var brush = cut ? R("Text2Brush") : RegionText;
+            string full = cut ? "刪除 " + TimeFormat.FormatShort(r.Length) : $"×{TimeRegion.FormatSpeed(r.Speed)} → {TimeFormat.FormatShort(r.Target)}";
+            string brief = cut ? "刪除" : "×" + TimeRegion.FormatSpeed(r.Speed);
+            var label = Text(full, 10, brush, ppd, true);
+            if (label.Width + 12 > visRight - visLeft) label = Text(brief, 10, brush, ppd, true);
+            if (label.Width + 12 > visRight - visLeft) continue;
+            double lx = (visLeft + visRight - label.Width) / 2;
+            dc.DrawRoundedRectangle(LabelBack, null, new Rect(lx - 4, FilmTop + 3, label.Width + 8, 14), 4, 4);
+            dc.DrawText(label, new Point(lx, FilmTop + 4));
+        }
+
+        if (!double.IsNaN(pendingStart))
+        {
+            double a = X(Math.Min(pendingStart, pendingEnd)), b = X(Math.Max(pendingStart, pendingEnd));
+            dc.DrawRectangle(SelFill, PendingPen, new Rect(a, FilmTop, Math.Max(1, b - a), bottom - FilmTop));
+        }
+    }
+
+    static readonly Pen PendingPen = DashedPen("#E05B8CFF", 1.5);
+
+    Color hatchColor;
+    Brush hatch;
+
+    /// <summary>Diagonal stripes for cut regions, rebuilt when the theme changes their colour.</summary>
+    Brush Hatch(Color c)
+    {
+        if (hatch != null && hatchColor == c) return hatch;
+        var lines = new GeometryGroup();
+        lines.Children.Add(new LineGeometry(new Point(0, 8), new Point(8, 0)));
+        lines.Children.Add(new LineGeometry(new Point(-2, 2), new Point(2, -2)));
+        lines.Children.Add(new LineGeometry(new Point(6, 10), new Point(10, 6)));
+        var b = new DrawingBrush(new GeometryDrawing(null, new Pen(new SolidColorBrush(c), 1.5), lines))
+        {
+            TileMode = TileMode.Tile,
+            Viewport = new Rect(0, 0, 8, 8),
+            ViewportUnits = BrushMappingMode.Absolute,
+            Viewbox = new Rect(0, 0, 8, 8),
+            ViewboxUnits = BrushMappingMode.Absolute,
+        };
+        b.Freeze();
+        hatchColor = c;
+        return hatch = b;
     }
 
     /// <summary>File name in the visible part of a block: full, then shortened in the middle, then "#n".</summary>
@@ -336,19 +435,46 @@ public sealed class TimelineControl : FrameworkElement
     {
         if (timeline == null) return;
         var p = e.GetPosition(this);
-        drag = HitHandle(p);
+        double t = T(p.X);
+        var mods = Keyboard.Modifiers;
+        bool onTracks = p.Y >= FilmTop - 6;
+        dragRegion = null;
+        if ((mods & ModifierKeys.Shift) != 0 && onTracks && TimeRegion.Gap(regions, t, Duration, out boundLo, out boundHi))
+        {
+            drag = Drag.NewRegion;
+            pendingStart = pendingEnd = t;
+        }
+        else if ((mods & ModifierKeys.Alt) != 0 && onTracks && RegionAt(t) is TimeRegion moved)
+        {
+            drag = Drag.RegionMove;
+            dragRegion = moved;
+            grabOffset = moved.Start - t;
+        }
+        else drag = HitHandle(p, out dragRegion);
+        if (dragRegion != null) TimeRegion.Bounds(regions, dragRegion, Duration, out boundLo, out boundHi);
         CaptureMouse();
         lastDragX = p.X;
-        if (drag == Drag.None)
+        switch (drag)
         {
-            drag = Drag.Scrub;
-            Apply(p.X);
-        }
-        else
-        {
-            double handle = drag == Drag.In ? inPoint : outPoint;
-            grabOffset = handle - T(p.X);
-            SeekRequested?.Invoke(handle);
+            case Drag.None:
+                drag = Drag.Scrub;
+                Apply(p.X);
+                break;
+            case Drag.In:
+            case Drag.Out:
+                double handle = drag == Drag.In ? inPoint : outPoint;
+                grabOffset = handle - t;
+                SeekRequested?.Invoke(handle);
+                break;
+            case Drag.RegionStart:
+            case Drag.RegionEnd:
+                double edge = drag == Drag.RegionStart ? dragRegion.Start : dragRegion.End;
+                grabOffset = edge - t;
+                SeekRequested?.Invoke(edge);
+                break;
+            default:
+                Apply(p.X);
+                break;
         }
         e.Handled = true;
     }
@@ -366,7 +492,10 @@ public sealed class TimelineControl : FrameworkElement
             else if (!atEdge) edgeScroll.Stop();
             return;
         }
-        Cursor = timeline != null && HitHandle(p) != Drag.None ? Cursors.SizeWE : Cursors.Hand;
+        Cursor = timeline == null ? Cursors.Hand
+            : HitHandle(p, out _) != Drag.None ? Cursors.SizeWE
+            : (Keyboard.Modifiers & ModifierKeys.Alt) != 0 && p.Y >= FilmTop - 6 && RegionAt(T(p.X)) != null ? Cursors.SizeAll
+            : Cursors.Hand;
         UpdateToolTip(p);
     }
 
@@ -381,30 +510,28 @@ public sealed class TimelineControl : FrameworkElement
 
     protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
     {
+        if (drag == Drag.NewRegion)
+        {
+            drag = Drag.Scrub; // so losing the capture below doesn't drop the range
+            ReleaseMouseCapture();
+            EndDrag();
+            double a = Math.Min(pendingStart, pendingEnd), b = Math.Max(pendingStart, pendingEnd);
+            if (b - a >= TimeRegion.MinLength) NewRegionRequested?.Invoke(a, b);
+            else ClearPending();
+            return;
+        }
         EndDrag();
         ReleaseMouseCapture();
     }
 
     protected override void OnLostMouseCapture(MouseEventArgs e) => EndDrag();
 
-    /// <summary>Right-click moves whichever of the in/out points is nearer to the clicked time.</summary>
-    protected override void OnMouseRightButtonUp(MouseButtonEventArgs e)
-    {
-        if (timeline == null || drag != Drag.None) return;
-        double t = T(e.GetPosition(this).X);
-        if (Math.Abs(t - inPoint) <= Math.Abs(t - outPoint))
-            inPoint = Math.Min(t, outPoint - MinRange);
-        else
-            outPoint = Math.Max(t, inPoint + MinRange);
-        RangeChanged?.Invoke(inPoint, outPoint);
-        SeekRequested?.Invoke(t);
-        InvalidateVisual();
-        e.Handled = true;
-    }
-
     void EndDrag()
     {
+        // Losing the mouse while drawing (e.g. Alt+Tab) drops the range rather than asking about it.
+        if (drag == Drag.NewRegion) ClearPending();
         drag = Drag.None;
+        dragRegion = null;
         edgeScroll.Stop();
     }
 
@@ -423,20 +550,52 @@ public sealed class TimelineControl : FrameworkElement
 
     void UpdateToolTip(Point p)
     {
-        if (timeline == null || p.Y < FilmTop || p.Y > FilmTop + FilmH) { ToolTip = null; return; }
-        timeline.Locate(T(p.X), out var i, out _);
-        var s = timeline.Segments[i];
-        var tip = $"#{i + 1}  {s.Name}\n長度 {TimeFormat.FormatShort(s.Duration)} · 從 {TimeFormat.FormatShort(s.Offset)} 開始";
+        if (timeline == null || p.Y < FilmTop || p.Y > WaveTop + WaveH) { ToolTip = null; return; }
+        string tip;
+        if (RegionAt(T(p.X)) is TimeRegion r)
+        {
+            string span = $"{TimeFormat.FormatShort(r.Start)}–{TimeFormat.FormatShort(r.End)}";
+            tip = (r.Kind == RegionKind.Cut
+                ? $"刪除 {span}（{TimeFormat.FormatShort(r.Length)}）"
+                : $"縮時 {span} → {TimeFormat.FormatShort(r.Target)}（×{TimeRegion.FormatSpeed(r.Speed)}）")
+                + "\n拖曳兩端調整 · Alt＋拖曳移動";
+        }
+        else if (p.Y <= FilmTop + FilmH)
+        {
+            timeline.Locate(T(p.X), out var i, out _);
+            var s = timeline.Segments[i];
+            tip = $"#{i + 1}  {s.Name}\n長度 {TimeFormat.FormatShort(s.Duration)} · 從 {TimeFormat.FormatShort(s.Offset)} 開始";
+        }
+        else { ToolTip = null; return; }
         if (!Equals(ToolTip, tip)) ToolTip = tip;
     }
 
-    Drag HitHandle(Point p)
+    /// <summary>The in/out handles win over region edges; otherwise the nearest region edge.</summary>
+    Drag HitHandle(Point p, out TimeRegion region)
     {
+        region = null;
         if (p.Y < FilmTop - 6) return Drag.None;
         double din = Math.Abs(p.X - X(inPoint)), dout = Math.Abs(p.X - X(outPoint));
         if (din <= HandleHit && din <= dout) return Drag.In;
         if (dout <= HandleHit) return Drag.Out;
-        return Drag.None;
+        var hit = Drag.None;
+        TimeRegion found = null;
+        double best = double.MaxValue;
+        void Consider(Drag kind, TimeRegion r, double x)
+        {
+            double d = Math.Abs(p.X - x);
+            if (d > HandleHit) return;
+            // Where one region ends and the next begins, the side the mouse is on decides.
+            bool inside = kind == Drag.RegionStart ? p.X >= x : p.X <= x;
+            if (d < best - 0.01 || (d <= best + 0.01 && inside)) { best = d; hit = kind; found = r; }
+        }
+        foreach (var r in regions)
+        {
+            Consider(Drag.RegionStart, r, X(r.Start));
+            Consider(Drag.RegionEnd, r, X(r.End));
+        }
+        region = found;
+        return hit;
     }
 
     void Apply(double x)
@@ -458,6 +617,29 @@ public sealed class TimelineControl : FrameworkElement
             case Drag.Scrub:
                 SeekRequested?.Invoke(t);
                 break;
+            case Drag.RegionStart:
+                t = Math.Max(0, Math.Min(Duration, t + grabOffset));
+                dragRegion.Start = Math.Max(boundLo, Math.Min(t, dragRegion.End - dragRegion.MinLengthFor));
+                RegionsChanged?.Invoke();
+                SeekRequested?.Invoke(dragRegion.Start);
+                break;
+            case Drag.RegionEnd:
+                t = Math.Max(0, Math.Min(Duration, t + grabOffset));
+                dragRegion.End = Math.Min(boundHi, Math.Max(t, dragRegion.Start + dragRegion.MinLengthFor));
+                RegionsChanged?.Invoke();
+                SeekRequested?.Invoke(dragRegion.End);
+                break;
+            case Drag.RegionMove:
+                double len = dragRegion.Length;
+                dragRegion.Start = Math.Max(boundLo, Math.Min(boundHi - len, t + grabOffset));
+                dragRegion.End = dragRegion.Start + len;
+                RegionsChanged?.Invoke();
+                SeekRequested?.Invoke(dragRegion.Start);
+                break;
+            case Drag.NewRegion:
+                pendingEnd = Math.Max(boundLo, Math.Min(boundHi, t));
+                SeekRequested?.Invoke(pendingEnd);
+                break;
         }
         InvalidateVisual();
     }
@@ -472,6 +654,13 @@ public sealed class TimelineControl : FrameworkElement
     static Pen FrozenPen(string hex, double width)
     {
         var p = new Pen(Frozen(hex), width);
+        p.Freeze();
+        return p;
+    }
+
+    static Pen DashedPen(string hex, double width)
+    {
+        var p = new Pen(Frozen(hex), width) { DashStyle = new DashStyle(new double[] { 3, 2 }, 0) };
         p.Freeze();
         return p;
     }

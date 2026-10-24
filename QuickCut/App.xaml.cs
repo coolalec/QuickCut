@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Threading;
 
@@ -7,8 +8,17 @@ namespace QuickCut;
 
 public partial class App : Application
 {
+    [DllImport("kernel32.dll")]
+    static extern uint SetErrorMode(uint mode);
+
+    const uint SEM_FAILCRITICALERRORS = 0x0001;
+    const uint SEM_NOOPENFILEERRORBOX = 0x8000;
+
     protected override void OnStartup(StartupEventArgs e)
     {
+        // FFmpeg inherits this: with a DLL missing from the ffmpeg folder it then exits with an error code
+        // (reported as "FFmpeg 檔案不完整") instead of waiting forever behind a Windows "DLL not found" box.
+        SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
         DispatcherUnhandledException += OnUnhandled;
         AppDomain.CurrentDomain.UnhandledException += (_, args) => WriteCrashLog(args.ExceptionObject as Exception);
         base.OnStartup(e);

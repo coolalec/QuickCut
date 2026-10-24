@@ -14,6 +14,8 @@ public sealed class ExportRequest
     public Timeline Timeline;
     public double In;
     public double Out;
+    public List<TimeRegion> Regions;  // sped-up and left-out stretches; a copy, so edits during the export don't reach it
+    public TimelapseAudio TimelapseAudio;
     public string Codec;          // h264 / hevc
     public EncoderChoice Encoder;
     public int TargetHeight;      // 0 = keep source resolution
@@ -42,10 +44,11 @@ public sealed class ExportJob
 
     public async Task<ExportResult> RunAsync(ExportRequest r, CancellationToken ct)
     {
-        var pieces = r.Timeline.Slice(r.In, r.Out);
+        var pieces = r.Timeline.Slice(r.In, r.Out, r.Regions);
         if (pieces.Count == 0) return new ExportResult { Error = "剪輯範圍是空的" };
+        if (r.Lossless && pieces.Any(p => p.Speed > 1)) return new ExportResult { Error = "縮時需要重新編碼，無法使用無損快速剪輯" };
 
-        double duration = pieces.Sum(p => p.Duration);
+        double duration = pieces.Sum(p => p.OutDuration);
         var first = r.Timeline.Segments[pieces[0].Segment].Media;
         var audio = EncodePlanner.PlanAudio(r.Timeline, pieces, r.RemoveAudio, r.Lossless);
         EncodePlanner.OutputSize(first, r.TargetHeight, out int w, out int h);
@@ -53,7 +56,7 @@ public sealed class ExportJob
         double videoKbps = 0;
         if (!r.Lossless)
         {
-            double srcKbps = pieces.Sum(p => r.Timeline.Segments[p.Segment].Media.VideoBitrate * p.Duration) / duration / 1000;
+            double srcKbps = EncodePlanner.SourceKbps(r.Timeline, pieces);
             double pixelRatio = (double)w * h / Math.Max(1, first.Width * first.Height);
             videoKbps = EncodePlanner.ComputeSize(r.LimitMB, duration, audio.Kbps, srcKbps, pixelRatio,
                 first.VideoCodec, r.Codec, false).VideoKbps;
@@ -93,7 +96,7 @@ public sealed class ExportJob
                 {
                     TryDelete(r.OutputPath);
                     var tail = string.Join("\n", res.StdErr.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).Reverse().Take(3).Reverse());
-                    return new ExportResult { Error = string.IsNullOrEmpty(tail) ? $"FFmpeg 結束代碼 {res.ExitCode}" : tail, Attempts = attempt };
+                    return new ExportResult { Error = string.IsNullOrEmpty(tail) ? ProcessUtil.DescribeExit(res.ExitCode) : tail, Attempts = attempt };
                 }
 
                 long bytes = new FileInfo(r.OutputPath).Length;
@@ -137,7 +140,7 @@ public sealed class ExportJob
             AppendAudio(sb, audio, "0:a:0?");
             sb.Append("-avoid_negative_ts make_zero ");
         }
-        else if (pieces.Count == 1)
+        else if (pieces.Count == 1 && pieces[0].Speed == 1)
         {
             var p = pieces[0];
             sb.Append($"-hwaccel auto -ss {F(p.Start)} -t {F(p.Duration)} -i {Q(tl.Segments[p.Segment].Media.Path)} ");
@@ -149,7 +152,8 @@ public sealed class ExportJob
         }
         else
         {
-            // Several files: trim each input precisely, normalise, then join with the concat filter.
+            // Several pieces: trim each input precisely, normalise, then join with the concat filter.
+            // Sped-up pieces are retimed and thinned to the output frame rate before scaling, which keeps them fast.
             var filter = new StringBuilder();
             var joins = new StringBuilder();
             bool withAudio = audio.Mode != AudioMode.None;
@@ -157,14 +161,22 @@ public sealed class ExportJob
             for (int i = 0; i < pieces.Count; i++)
             {
                 var p = pieces[i];
+                bool fast = p.Speed > 1;
+                string speed = p.Speed.ToString("0.######", CultureInfo.InvariantCulture);
                 sb.Append($"-hwaccel auto -ss {F(p.Start)} -t {F(p.Duration)} -i {Q(tl.Segments[p.Segment].Media.Path)} ");
                 // Fit inside the first file's frame; a file of the other orientation gets black bars instead of being stretched.
-                filter.Append($"[{i}:v:0]scale={w}:{h}:force_original_aspect_ratio=decrease:flags=lanczos," +
-                              $"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps={fps}[v{i}];");
+                string fit = $"scale={w}:{h}:force_original_aspect_ratio=decrease:flags=lanczos,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1";
+                filter.Append(fast
+                    ? $"[{i}:v:0]setpts=(PTS-STARTPTS)/{speed},fps={fps},{fit}[v{i}];"
+                    : $"[{i}:v:0]{fit},fps={fps}[v{i}];");
                 joins.Append($"[v{i}]");
                 if (withAudio)
                 {
-                    filter.Append($"[{i}:a:0]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[a{i}];");
+                    const string norm = "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo";
+                    if (fast && r.TimelapseAudio == TimelapseAudio.Mute)
+                        filter.Append($"anullsrc=channel_layout=stereo:sample_rate=48000,atrim=duration={F(p.OutDuration)},{norm}[a{i}];");
+                    else
+                        filter.Append($"[{i}:a:0]{(fast ? AtempoChain(p.Speed) + "," : "")}{norm}[a{i}];");
                     joins.Append($"[a{i}]");
                 }
             }
@@ -178,6 +190,15 @@ public sealed class ExportJob
 
         sb.Append("-movflags +faststart ").Append(Q(r.OutputPath));
         return sb.ToString();
+    }
+
+    /// <summary>atempo takes at most 100×, so faster speeds are chained.</summary>
+    static string AtempoChain(double speed)
+    {
+        var parts = new List<string>();
+        for (; speed > 100; speed /= 100) parts.Add("atempo=100");
+        parts.Add("atempo=" + speed.ToString("0.######", CultureInfo.InvariantCulture));
+        return string.Join(",", parts);
     }
 
     static void AppendAudio(StringBuilder sb, AudioPlan audio, string map)

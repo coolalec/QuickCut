@@ -48,6 +48,46 @@
         <Setter Property="FontSize" Value="13"/>
         <Setter Property="FontWeight" Value="SemiBold"/>
     </Style>
+    <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+
+    <!-- Inspector section heading that folds its section: checked = open. Tag is a summary shown while folded. -->
+    <Style x:Key="SectionToggle" TargetType="ToggleButton">
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Focusable" Value="False"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="IsChecked" Value="True"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToggleButton">
+                    <Grid Background="Transparent">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="chevron" Text="&#xE70D;" FontFamily="{StaticResource IconFont}" FontSize="10" FontWeight="Normal"
+                                   Foreground="{DynamicResource Text3Brush}" VerticalAlignment="Center" Margin="0,1,8,0"/>
+                        <ContentPresenter Grid.Column="1" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="summary" Grid.Column="2" Text="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}"
+                                   Foreground="{DynamicResource Text3Brush}" FontSize="11" FontWeight="Normal" TextTrimming="CharacterEllipsis"
+                                   HorizontalAlignment="Right" VerticalAlignment="Center" Margin="12,0,0,0" Visibility="Collapsed"/>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="False">
+                            <Setter TargetName="chevron" Property="Text" Value="&#xE76C;"/>
+                            <Setter TargetName="summary" Property="Visibility" Value="Visible"/>
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="chevron" Property="Foreground" Value="{DynamicResource TextBrush}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <Style x:Key="Icon" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource IconFont}"/>
         <Setter Property="VerticalAlignment" Value="Center"/>

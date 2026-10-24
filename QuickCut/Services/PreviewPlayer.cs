@@ -39,7 +39,7 @@ sealed class FrameDecoder : IDisposable
                    $"-vf scale={width}:{height}:force_original_aspect_ratio=decrease:flags=fast_bilinear,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2 " +
                    "-pix_fmt bgra -f rawvideo pipe:1";
         process = new Process { StartInfo = ProcessUtil.CreateInfo(FfmpegLocator.FfmpegPath, args) };
-        process.Start();
+        ProcessUtil.Start(process);
         process.ErrorDataReceived += (_, _) => { };
         process.BeginErrorReadLine();
         stdout = process.StandardOutput.BaseStream;
@@ -122,6 +122,9 @@ public sealed class PreviewPlayer : IDisposable
     public event Action<double> PositionChanged;
     public event Action<bool> PlayingChanged;
     public event Action<string> Log;
+
+    /// <summary>The preview can't run at all, e.g. FFmpeg went missing; raised on the UI thread.</summary>
+    public event Action<string> Failed;
 
     /// <summary>Raised on the UI thread when playback crosses into a file of a different size or orientation.</summary>
     public event Action BitmapChanged;
@@ -345,6 +348,7 @@ public sealed class PreviewPlayer : IDisposable
             catch (Exception ex)
             {
                 Debug.WriteLine("Preview error: " + ex);
+                if (ex is FfmpegMissingException) RaiseOnUi(() => Failed?.Invoke(ex.Message));
                 StopAudio();
                 CloseDecoder();
                 SetPlaying(false);

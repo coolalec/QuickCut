@@ -6,6 +6,9 @@ namespace QuickCut.Services;
 
 public enum AudioMode { None, Copy, Aac }
 
+/// <summary>What sped-up regions sound like: silence, or the original sped up (same pitch).</summary>
+public enum TimelapseAudio { Mute, Fast }
+
 public sealed class AudioPlan
 {
     public AudioMode Mode;
@@ -38,6 +41,7 @@ public static class EncodePlanner
     const double KbitPerMB = 8388.608; // 1 MiB = 8,388,608 bits
     const double SafetyMargin = 0.92;  // leaves room for VBR overshoot and container overhead
     const double ContainerOverhead = 1.01;
+    const double TimelapseBitrateFactor = 1.5; // frames of a sped-up stretch differ far more than the source's own
 
     public static AudioPlan PlanAudio(Timeline tl, IList<Piece> pieces, bool remove, bool lossless)
     {
@@ -49,6 +53,7 @@ public static class EncodePlanner
         // AAC/MP3 can go into MP4 untouched. Joining several files through the concat filter needs a re-encode.
         bool copyable = medias.All(m => m.AudioCodec == "aac" || m.AudioCodec == "mp3");
         if (pieces.Count > 1 && !lossless) copyable = false;
+        if (pieces.Any(p => p.Speed > 1)) copyable = false; // silence or atempo goes through the filter graph
 
         if (copyable)
         {
@@ -59,6 +64,18 @@ public static class EncodePlanner
         var source = medias.Max(m => m.AudioBitrate) / 1000.0;
         var aac = source > 0 ? Math.Max(AacMinKbps, Math.Min(AacMaxKbps, Math.Round(source))) : AacMaxKbps;
         return new AudioPlan { Mode = AudioMode.Aac, Kbps = aac };
+    }
+
+    /// <summary>
+    /// Source video kbps per second of output, the ceiling for the encode. Sped-up pieces pack many seconds of source
+    /// into each output second and compress worse, so they're allowed more than the source had.
+    /// </summary>
+    public static double SourceKbps(Timeline tl, IList<Piece> pieces)
+    {
+        double outDuration = pieces.Sum(p => p.OutDuration);
+        if (outDuration <= 0) return 0;
+        return pieces.Sum(p => tl.Segments[p.Segment].Media.VideoBitrate * p.OutDuration * (p.Speed > 1 ? TimelapseBitrateFactor : 1))
+               / outDuration / 1000;
     }
 
     /// <summary>720p/1080p name the shorter edge, so a portrait 1080×1920 clip stays 1080×1920 at "1080p".</summary>

@@ -35,6 +35,8 @@ public partial class MainWindow : Window
     readonly ObservableCollection<ChipItem> chips = new ObservableCollection<ChipItem>();
     readonly StringBuilder log = new StringBuilder();
     readonly ObservableCollection<MessageItem> messages = new ObservableCollection<MessageItem>();
+    readonly List<TimeRegion> regions = new List<TimeRegion>(); // shared with TimelineView, kept in timeline order
+    readonly ObservableCollection<RegionItem> regionItems = new ObservableCollection<RegionItem>();
 
     Timeline timeline;
     double inPoint, outPoint;
@@ -42,9 +44,12 @@ public partial class MainWindow : Window
     bool gpuReady;
     bool loadingUi = true; // controls raise change events while InitializeComponent builds them
     int currentSegment = -1;
+    int sourceIndex;      // file whose details the inspector shows
+    string sourceOrder;   // how the files were put in order, for the inspector
     CancellationTokenSource exportCts;
     CancellationTokenSource analysisCts;
     string lastOutput;
+    bool previewFailureShown;
 
     public MainWindow()
     {
@@ -56,6 +61,13 @@ public partial class MainWindow : Window
         player.PositionChanged += OnPositionChanged;
         player.PlayingChanged += playing => PlayGlyph.Text = playing ? "" : "";
         player.Log += AppendLog;
+        player.Failed += message =>
+        {
+            AppendLog(message);
+            if (previewFailureShown) return; // the preview retries on every seek; once is enough
+            previewFailureShown = true;
+            ShowResult(false, "預覽無法播放", message);
+        };
         player.BitmapChanged += () => PreviewImage.Source = player.Bitmap;
         player.SetMuted(settings.PreviewMuted);
 
@@ -67,9 +79,13 @@ public partial class MainWindow : Window
             outPoint = b;
             UpdateRangeUi();
         };
+        TimelineView.Regions = regions;
+        TimelineView.RegionsChanged += () => OnRegionsChanged(false);
+        TimelineView.NewRegionRequested += OnNewRegionRequested;
 
         FileChips.ItemsSource = chips;
         MessageList.ItemsSource = messages;
+        RegionList.ItemsSource = regionItems;
         ApplySettingsToUi();
         UpdateEstimate();
 
@@ -86,6 +102,8 @@ public partial class MainWindow : Window
         Loaded += OnLoaded;
         Closing += OnClosing;
         PreviewKeyDown += OnPreviewKeyDown;
+        // A lone Alt (held for Alt+drag on the timeline) would otherwise put the window in menu mode and eat the next key.
+        PreviewKeyUp += (_, e) => { if (e.Key == Key.System && e.SystemKey is Key.LeftAlt or Key.RightAlt) e.Handled = true; };
         PreviewMouseDown += OnPreviewMouseDown;
         DragEnter += OnDragEnter;
         DragOver += OnDragEnter;
@@ -166,17 +184,46 @@ public partial class MainWindow : Window
         CodecH264.IsChecked = true;
         (settings.TargetHeight == 720 ? Res720 : settings.TargetHeight == 1080 ? Res1080 : Res0).IsChecked = true;
         (settings.RemoveAudio ? AudioRemove : AudioKeep).IsChecked = true;
+        (settings.TimelapseAudio == TimelapseAudio.Fast ? TlAudioFast : TlAudioMute).IsChecked = true;
         LimitSlider.Value = Clamp(settings.LimitMB, LimitSlider.Minimum, LimitSlider.Maximum);
         LimitBox.Text = settings.LimitMB.ToString("0.#", CultureInfo.InvariantCulture);
         LosslessSwitch.IsChecked = settings.Lossless;
         InspectorCol.Width = new GridLength(Clamp(settings.InspectorWidth, InspectorCol.MinWidth, InspectorCol.MaxWidth));
         LowerRow.Height = new GridLength(Math.Min(LowerRow.MaxHeight, Math.Max(LowerRow.MinHeight, settings.LowerHeight)));
         ApplyLosslessUi();
+        SourceToggle.IsChecked = !settings.SourceCollapsed;
+        OutputToggle.IsChecked = !settings.OutputCollapsed;
+        EncodeToggle.IsChecked = !settings.EncodeCollapsed;
         UpdateOutputDirText();
         UpdateMuteUi();
         UpdateThemeUi();
         ApplyRail();
         loadingUi = false;
+    }
+
+    void SectionToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        if (loadingUi) return;
+        settings.SourceCollapsed = SourceToggle.IsChecked != true;
+        settings.OutputCollapsed = OutputToggle.IsChecked != true;
+        settings.EncodeCollapsed = EncodeToggle.IsChecked != true;
+        SaveSettings();
+    }
+
+    /// <summary>What a folded section shows next to its title. The output section's is set by <see cref="UpdateEstimate"/>.</summary>
+    void UpdateSectionSummaries()
+    {
+        if (timeline == null) SourceToggle.Tag = "—";
+        else
+        {
+            var seg = timeline.Segments[Math.Min(sourceIndex, timeline.Segments.Count - 1)];
+            SourceToggle.Tag = $"{seg.Name} · {TimeFormat.FormatShort(seg.Duration)}";
+        }
+
+        string audio = RemoveAudio ? "移除聲音" : "保留聲音";
+        if (regions.Any(r => r.Kind == RegionKind.Speed)) audio += settings.TimelapseAudio == TimelapseAudio.Fast ? " · 縮時加速" : " · 縮時靜音";
+        EncodeToggle.Tag = Lossless ? $"無損 · {audio}"
+            : $"{(SelectedCodec == "hevc" ? "H.265" : "H.264")} · {(SelectedHeight == 0 ? "原始" : SelectedHeight + "p")} · {audio}";
     }
 
     void RailToggle_Click(object sender, RoutedEventArgs e)
@@ -230,7 +277,6 @@ public partial class MainWindow : Window
     void OnThemeChanged()
     {
         TimelineView.InvalidateVisual();
-        SizeRing.InvalidateVisual();
         WindowEffects.Apply(this);
     }
 
@@ -279,7 +325,12 @@ public partial class MainWindow : Window
     /// <param name="append">Add to the current timeline instead of replacing it; the cut range and position stay on the same footage.</param>
     async Task OpenFilesAsync(string[] paths, bool append = false)
     {
-        if (!FfmpegLocator.Locate()) return;
+        if (!FfmpegLocator.Locate())
+        {
+            ShowResult(false, "找不到 FFmpeg，無法開啟影片",
+                "請把 ffmpeg 資料夾（含 ffmpeg.exe 與 ffprobe.exe）放回程式旁的 ffmpeg\\bin，或重新解壓 QuickCut 的 zip，然後重新啟動。");
+            return;
+        }
         var old = append && timeline != null ? timeline.Segments.ToList() : new List<Segment>();
         if (old.Count == 0) manualOrder = false;
         var files = paths
@@ -341,6 +392,7 @@ public partial class MainWindow : Window
     void ApplyTimeline(List<MediaInfo> medias, List<Segment> old, Func<Timeline, double[]> place)
     {
         player.Pause();
+        var previous = timeline;
         timeline = new Timeline(medias);
         foreach (var s in timeline.Segments)
         {
@@ -358,6 +410,10 @@ public partial class MainWindow : Window
         foreach (var o in old.Where(o => !medias.Contains(o.Media)))
             o.Thumbs?.Dispose();
         var p = place?.Invoke(timeline);
+        int lostRegions = 0;
+        if (p == null) regions.Clear();
+        else lostRegions = RemapRegions(previous, timeline);
+        RebuildRegionItems();
         double playhead = 0;
         if (p != null)
         {
@@ -384,14 +440,8 @@ public partial class MainWindow : Window
             chips.Add(new ChipItem { Name = s.Name, Length = TimeFormat.FormatShort(s.Duration), Offset = s.Offset, Media = s.Media,
                 IsCurrent = s == timeline.Segments[currentSegment] });
 
-        var first = timeline.Segments[0].Media;
-        int count = timeline.Segments.Count;
-        SrcCodec.Text = first.CodecDisplay + (timeline.IsUniform ? "" : "（各檔不同）");
-        SrcRes.Text = $"{first.Width}×{first.Height} · {first.Fps:0.##} fps";
-        SrcRate.Text = $"{first.VideoBitrate / 1e6:0.0} Mbps";
-        SrcAudio.Text = first.AudioDisplay;
-        SrcLength.Text = TimeFormat.Format(timeline.Duration) + (count > 1 ? $"（{count} 檔）" : "");
-        SrcOrder.Text = manualOrder ? "手動排列" : FileOrder.ByCreationTime(medias) ? "依影片建立時間" : "依檔名";
+        sourceOrder = manualOrder ? "手動排列" : FileOrder.ByCreationTime(medias) ? "依影片建立時間" : "依檔名";
+        ShowSourceInfo(currentSegment);
         FramePill.Visibility = Visibility.Visible;
         EmptyState.Visibility = Visibility.Collapsed;
         TimeTotal.Text = " / " + TimeFormat.Format(timeline.Duration);
@@ -400,6 +450,35 @@ public partial class MainWindow : Window
         UpdateRangeUi();
         UpdateOutputDirText();
         UpdateExportEnabled();
+        UpdateRegionPill(playhead);
+        if (lostRegions > 0)
+            ShowResult(false, $"已移除 {lostRegions} 個縮時或刪除區段", "檔案變動後，這些區段的範圍不再是連續的同一段影片。", warn: true);
+    }
+
+    /// <summary>
+    /// Moves the regions onto a rebuilt timeline by (file, time in file), the way the cut is kept in place.
+    /// Ones that no longer cover one unbroken stretch of the same footage are dropped; returns how many.
+    /// </summary>
+    int RemapRegions(Timeline from, Timeline to)
+    {
+        if (from == null || regions.Count == 0) return 0;
+        var kept = new List<TimeRegion>();
+        foreach (var r in regions)
+        {
+            // The end is anchored just inside the region, so a region ending on a file boundary stays with its own file.
+            var a = Anchor(from, r.Start);
+            var b = Anchor(from, r.End - 0.001);
+            if (!to.Segments.Any(s => s.Media == a.Media) || !to.Segments.Any(s => s.Media == b.Media)) continue;
+            double start = Unanchor(to, a), end = Unanchor(to, b) + 0.001;
+            if (Math.Abs(end - start - r.Length) > 0.01) continue;
+            r.Start = start;
+            r.End = end;
+            kept.Add(r);
+        }
+        int lost = regions.Count - kept.Count;
+        regions.Clear();
+        regions.AddRange(kept.OrderBy(r => r.Start));
+        return lost;
     }
 
     void RemoveFile_Click(object sender, RoutedEventArgs e)
@@ -446,15 +525,46 @@ public partial class MainWindow : Window
         PreviewHost.Cursor = null;
         EmptyState.Visibility = Visibility.Visible;
         FramePill.Visibility = Visibility.Collapsed;
-        SrcCodec.Text = SrcRes.Text = SrcRate.Text = SrcAudio.Text = SrcLength.Text = SrcOrder.Text = "—";
+        SrcName.Text = SrcVideo.Text = SrcAudio.Text = SrcLength.Text = "—";
+        SrcName.ToolTip = null;
+        SrcPager.Visibility = Visibility.Collapsed;
+        sourceIndex = 0;
         TimeMain.Text = "00:00";
         TimeMs.Text = ".000";
         TimeTotal.Text = " / 00:00";
         inPoint = outPoint = 0;
         currentSegment = -1;
+        regions.Clear();
+        RebuildRegionItems();
+        RegionPill.Visibility = Visibility.Collapsed;
         UpdateTimelineNav();
         UpdateRangeUi();
         UpdateExportEnabled();
+    }
+
+    // ── Source details, one file at a time ──
+
+    void SrcPrev_Click(object sender, RoutedEventArgs e) => ShowSourceInfo(sourceIndex - 1);
+    void SrcNext_Click(object sender, RoutedEventArgs e) => ShowSourceInfo(sourceIndex + 1);
+
+    void ShowSourceInfo(int index)
+    {
+        if (timeline == null) return;
+        int count = timeline.Segments.Count;
+        sourceIndex = Math.Max(0, Math.Min(count - 1, index));
+        var seg = timeline.Segments[sourceIndex];
+        var m = seg.Media;
+        SrcPager.Visibility = count > 1 ? Visibility.Visible : Visibility.Collapsed;
+        SrcPagerText.Text = $"{sourceIndex + 1} / {count} · 總長 {TimeFormat.FormatShort(timeline.Duration)} · {sourceOrder}";
+        SrcPrev.IsEnabled = sourceIndex > 0;
+        SrcNext.IsEnabled = sourceIndex < count - 1;
+        SrcName.Text = seg.Name;
+        SrcName.ToolTip = m.Path;
+        // Thin spaces around the dots keep a 4K portrait clip's details on one line in the default inspector width.
+        SrcVideo.Text = string.Join(" · ", m.CodecDisplay, $"{m.Width}×{m.Height}", $"{m.Fps:0.##}fps", $"{m.VideoBitrate / 1e6:0.0}Mbps");
+        SrcAudio.Text = m.AudioDisplay;
+        SrcLength.Text = TimeFormat.Format(m.Duration);
+        UpdateSectionSummaries();
     }
 
     // ── Tab strip scrolling ──
@@ -465,6 +575,12 @@ public partial class MainWindow : Window
     void ChipsScroll_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
     {
         ChipsScroll.ScrollToHorizontalOffset(ChipsScroll.HorizontalOffset - e.Delta);
+        e.Handled = true;
+    }
+
+    void RegionScroll_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        RegionScroll.ScrollToHorizontalOffset(RegionScroll.HorizontalOffset - e.Delta);
         e.Handled = true;
     }
 
@@ -748,6 +864,7 @@ public partial class MainWindow : Window
         // Not while dragging on the timeline: moving the view under the mouse would make the dragged handle jump.
         if (timeline != null && TimelineView.IsZoomed && !TimelineView.IsDragging && (t < TimelineView.ViewStart || t > TimelineView.ViewEnd))
             TimelineView.EnsureVisible(t);
+        UpdateRegionPill(t);
         if (timeline != null)
         {
             FrameText.Text = "F " + (long)Math.Round(t * timeline.Fps);
@@ -755,6 +872,7 @@ public partial class MainWindow : Window
             if (seg != currentSegment)
             {
                 currentSegment = seg;
+                ShowSourceInfo(seg); // the inspector follows the playhead into another file
                 var media = timeline.Segments[seg].Media;
                 foreach (var c in chips) c.IsCurrent = c.Media == media;
                 (FileChips.ItemContainerGenerator.ContainerFromItem(chips.FirstOrDefault(c => c.IsCurrent)) as FrameworkElement)?.BringIntoView();
@@ -911,6 +1029,8 @@ public partial class MainWindow : Window
             case Key.OemOpenBrackets: SeekTo(inPoint); break;
             case Key.OemCloseBrackets: SeekTo(outPoint); break;
             case Key.M: Mute_Click(this, null); break;
+            case Key.T: AddRegionAtPlayhead(RegionKind.Speed); break;
+            case Key.D: AddRegionAtPlayhead(RegionKind.Cut); break;
             case Key.OemPlus or Key.Add: ZoomIn_Click(this, null); break;
             case Key.OemMinus or Key.Subtract when timeline != null: ZoomOut_Click(this, null); break;
             case Key.Oem5 or Key.OemBackslash when TimelineView.IsZoomed: ShowAll_Click(this, null); break;
@@ -951,22 +1071,24 @@ public partial class MainWindow : Window
         if (timeline == null)
         {
             InBox.Text = OutBox.Text = "";
-            LengthText.Text = "—";
         }
         else
         {
             InBox.Text = TimeFormat.Format(inPoint);
             OutBox.Text = TimeFormat.Format(outPoint);
-            LengthText.Text = $"{outPoint - inPoint:0.0} 秒";
         }
+        foreach (var item in regionItems) item.Refresh(inPoint, outPoint);
+        ApplyLosslessUi();
         UpdateEstimate();
     }
+
+    static string LengthString(double seconds) => seconds < 60 ? $"{seconds:0.0} 秒" : TimeFormat.FormatShort(seconds);
 
     void TimeBox_KeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter || e.Key == Key.Escape)
         {
-            if (e.Key == Key.Escape) UpdateRangeUi();
+            if (e.Key == Key.Escape) UpdateRangeUi(); // also puts the region cards' texts back
             Keyboard.ClearFocus();
             FocusManager.SetFocusedElement(this, this);
             e.Handled = true;
@@ -990,7 +1112,27 @@ public partial class MainWindow : Window
     string SelectedCodec => CodecHevc.IsChecked == true ? "hevc" : "h264";
     int SelectedHeight => Res720.IsChecked == true ? 720 : Res1080.IsChecked == true ? 1080 : 0;
     bool RemoveAudio => AudioRemove.IsChecked == true;
-    bool Lossless => LosslessSwitch.IsChecked == true;
+    /// <summary>
+    /// Lossless as the user chose it, unless the timeline can't be cut without re-encoding.
+    /// Read from the setting: while blocked the switch is shown off without changing the choice.
+    /// </summary>
+    bool Lossless => settings.Lossless && LosslessBlocker == null;
+
+    /// <summary>Why the current cut needs a re-encode, or null when a stream copy works.</summary>
+    string LosslessBlocker
+    {
+        get
+        {
+            if (timeline == null) return null;
+            if (regions.Any(r => r.Kind == RegionKind.Speed && r.End > inPoint && r.Start < outPoint))
+                return "縮時需要重新編碼，無法使用無損快速剪輯。";
+            // Stream copy can only join files whose streams match. Any mismatch on the timeline blocks it,
+            // so adding a different file later switches lossless off straight away.
+            if (timeline.Segments.Count > 1 && !Timeline.SameFormat(timeline.Segments.Select(s => s.Media).ToList()))
+                return "時間軸上的檔案格式不同（編碼、解析度、方向或聲音），無法使用無損快速剪輯。";
+            return null;
+        }
+    }
 
     void Codec_Checked(object sender, RoutedEventArgs e)
     {
@@ -1015,7 +1157,7 @@ public partial class MainWindow : Window
     void Lossless_Changed(object sender, RoutedEventArgs e)
     {
         if (loadingUi) return;
-        settings.Lossless = Lossless;
+        settings.Lossless = LosslessSwitch.IsChecked == true;
         ApplyLosslessUi();
         UpdateEstimate();
         UpdateExportEnabled();
@@ -1023,9 +1165,24 @@ public partial class MainWindow : Window
 
     void ApplyLosslessUi()
     {
+        var blocker = LosslessBlocker;
+        LosslessRow.IsEnabled = blocker == null;
+        LosslessRow.Opacity = blocker == null ? 1 : 0.4;
+        LosslessBlockedNote.Text = blocker;
+        LosslessBlockedNote.Visibility = blocker == null ? Visibility.Collapsed : Visibility.Visible;
         bool on = Lossless;
-        EncodeOptions.IsEnabled = LimitOptions.IsEnabled = !on;
-        EncodeOptions.Opacity = LimitOptions.Opacity = on ? 0.4 : 1;
+        if (LosslessSwitch.IsChecked != on)
+        {
+            bool wasLoading = loadingUi;
+            loadingUi = true; // showing "off" while blocked isn't the user switching it off
+            LosslessSwitch.IsChecked = on;
+            loadingUi = wasLoading;
+        }
+        EncodeOptions.IsEnabled = !on;
+        EncodeOptions.Opacity = on ? 0.4 : 1;
+        // Lossless has no size limit: the limit and the bar against it go away rather than sit there disabled.
+        LimitOptions.Visibility = SizeBarPanel.Visibility = on ? Visibility.Collapsed : Visibility.Visible;
+        LosslessSizeNote.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
         LosslessNote.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
 
         // Show "原始" while lossless, without overwriting the user's saved choice.
@@ -1034,6 +1191,163 @@ public partial class MainWindow : Window
         (on || settings.TargetHeight == 0 ? Res0 : settings.TargetHeight == 720 ? Res720 : Res1080).IsChecked = true;
         loadingUi = prev;
     }
+
+    // ───────────────────────── Sped-up and cut regions ─────────────────────────
+
+    /// <summary>After any region edit; <paramref name="rebuild"/> when regions were added, removed or changed kind.</summary>
+    void OnRegionsChanged(bool rebuild)
+    {
+        if (rebuild) RebuildRegionItems();
+        TimelineView.InvalidateVisual();
+        UpdateRangeUi();
+        UpdateRegionPill(player.Position);
+    }
+
+    void RebuildRegionItems()
+    {
+        regions.Sort((a, b) => a.Start.CompareTo(b.Start));
+        regionItems.Clear();
+        foreach (var r in regions) regionItems.Add(new RegionItem(r));
+        RegionScroll.Visibility = regions.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+        TimelapseAudioPanel.Visibility = regions.Any(r => r.Kind == RegionKind.Speed) ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    void UpdateRegionPill(double t)
+    {
+        var r = timeline == null ? null : regions.FirstOrDefault(x => x.Contains(t));
+        RegionPill.Visibility = r == null ? Visibility.Collapsed : Visibility.Visible;
+        if (r == null) return;
+        bool cut = r.Kind == RegionKind.Cut;
+        RegionPillGlyph.Text = cut ? "\uE8C6" : "\uEB9D";
+        RegionPillText.Text = cut ? "刪除區段（不輸出）" : "縮時 ×" + TimeRegion.FormatSpeed(r.Speed);
+    }
+
+    /// <summary>About a tenth of the length, but always at least <see cref="TimeRegion.MinSpeed"/>× faster.</summary>
+    static double DefaultTarget(double length) =>
+        Math.Max(TimeRegion.MinTarget, Math.Min(Math.Round(length / 10), length / TimeRegion.MinSpeed));
+
+    /// <summary>From the playhead to the next region or the out point, at most five minutes.</summary>
+    void AddRegionAtPlayhead(RegionKind kind)
+    {
+        if (timeline == null) return;
+        double t = player.Position;
+        if (!TimeRegion.Gap(regions, t, timeline.Duration, out _, out var hi))
+        {
+            ShowResult(false, "這裡已經有區段", "播放頭在現有的區段裡。先移到空白的地方，或直接修改那個區段。", warn: true);
+            return;
+        }
+        double end = Math.Min(hi, t + 300);
+        if (outPoint >= t + TimeRegion.MinLength) end = Math.Min(end, outPoint);
+        if (end - t < TimeRegion.MinLength)
+        {
+            ShowResult(false, "這裡放不下區段", "從播放頭到下一個區段或影片結尾不到 2 秒。", warn: true);
+            return;
+        }
+        AddRegion(kind, t, end);
+    }
+
+    void AddRegion(RegionKind kind, double start, double end)
+    {
+        var r = new TimeRegion { Kind = kind, Start = start, End = end };
+        if (kind == RegionKind.Speed) r.Target = DefaultTarget(r.Length);
+        regions.Add(r);
+        OnRegionsChanged(true);
+    }
+
+    static TimeRegion RegionOf(object sender) => ((RegionItem)((FrameworkElement)sender).Tag).Region;
+
+    // Typed or "set to playhead" edges stay clear of the neighbours and keep the region long enough for its target.
+    void MoveRegionStart(TimeRegion r, double t)
+    {
+        TimeRegion.Bounds(regions, r, timeline.Duration, out var lo, out _);
+        r.Start = Math.Max(lo, Math.Min(t, r.End - r.MinLengthFor));
+    }
+
+    void MoveRegionEnd(TimeRegion r, double t)
+    {
+        TimeRegion.Bounds(regions, r, timeline.Duration, out _, out var hi);
+        r.End = Math.Min(hi, Math.Max(t, r.Start + r.MinLengthFor));
+    }
+
+    void RegionStart_Commit(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        var r = RegionOf(sender);
+        if (timeline == null || !regions.Contains(r)) return; // focus also leaves when the card is removed
+        if (TimeFormat.TryParse(((TextBox)sender).Text, out var t)) MoveRegionStart(r, t);
+        OnRegionsChanged(false);
+    }
+
+    void RegionEnd_Commit(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        var r = RegionOf(sender);
+        if (timeline == null || !regions.Contains(r)) return;
+        if (TimeFormat.TryParse(((TextBox)sender).Text, out var t)) MoveRegionEnd(r, t);
+        OnRegionsChanged(false);
+    }
+
+    void RegionTarget_Commit(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        var r = RegionOf(sender);
+        if (timeline == null || !regions.Contains(r)) return;
+        if (TimeFormat.TryParse(((TextBox)sender).Text, out var v) && Math.Abs(v - r.Target) > 0.0005)
+        {
+            if (v * TimeRegion.MinSpeed > r.Length)
+                ShowResult(false, "縮成長度要比區段短", $"這段長 {TimeFormat.FormatShort(r.Length)}，最多只能縮成 {TimeFormat.FormatShort(r.Length / TimeRegion.MinSpeed)}。", warn: true);
+            else
+                r.Target = Math.Max(TimeRegion.MinTarget, v);
+        }
+        OnRegionsChanged(false);
+    }
+
+    void RegionSetStart_Click(object sender, RoutedEventArgs e)
+    {
+        if (timeline == null) return;
+        MoveRegionStart(RegionOf(sender), player.Position);
+        OnRegionsChanged(false);
+    }
+
+    void RegionSetEnd_Click(object sender, RoutedEventArgs e)
+    {
+        if (timeline == null) return;
+        // Like the out point: the region ends after the frame on screen.
+        MoveRegionEnd(RegionOf(sender), Math.Min(timeline.Duration, player.Position + timeline.FrameDuration));
+        OnRegionsChanged(false);
+    }
+
+    void RemoveRegion_Click(object sender, RoutedEventArgs e)
+    {
+        regions.Remove(RegionOf(sender));
+        OnRegionsChanged(true);
+    }
+
+    void TimelapseAudio_Checked(object sender, RoutedEventArgs e)
+    {
+        if (loadingUi) return;
+        settings.TimelapseAudio = TlAudioFast.IsChecked == true ? TimelapseAudio.Fast : TimelapseAudio.Mute;
+        UpdateSectionSummaries();
+    }
+
+    // ── Range drawn on the timeline ──
+
+    double newRegionStart, newRegionEnd;
+
+    void OnNewRegionRequested(double a, double b)
+    {
+        newRegionStart = a;
+        newRegionEnd = b;
+        NewRegionTitle.Text = $"{TimeFormat.FormatShort(a)}–{TimeFormat.FormatShort(b)}（{TimeFormat.FormatShort(b - a)}）";
+        NewRegionPopup.IsOpen = true;
+    }
+
+    void NewRegionItem_Click(object sender, RoutedEventArgs e)
+    {
+        NewRegionPopup.IsOpen = false;
+        AddRegion((RegionKind)Enum.Parse(typeof(RegionKind), (string)((FrameworkElement)sender).Tag), newRegionStart, newRegionEnd);
+    }
+
+    void NewRegionCancel_Click(object sender, RoutedEventArgs e) => NewRegionPopup.IsOpen = false;
+
+    void NewRegionPopup_Closed(object sender, EventArgs e) => TimelineView.ClearPending();
 
     // ───────────────────────── Encoder (title-bar badge) ─────────────────────────
 
@@ -1111,11 +1425,14 @@ public partial class MainWindow : Window
 
     void UpdateEstimate()
     {
-        if (SizeRing == null) return;
-        LimitRun.Text = $" / {settings.LimitMB:0.#} MB";
+        if (SizeBar == null) return;
+        UpdateSectionSummaries();
+        OutputToggle.Tag = "—";
+        OutBreakdown.Visibility = Visibility.Collapsed;
         if (timeline == null || outPoint - inPoint <= 0)
         {
-            SizeRing.Value = double.NaN;
+            SetSizeBar(double.NaN);
+            OutLengthText.Text = "—";
             EstText.Text = "—";
             RateText.Text = "載入影片後計算";
             AudioNote.Text = "";
@@ -1123,36 +1440,77 @@ public partial class MainWindow : Window
             return;
         }
 
-        var pieces = timeline.Slice(inPoint, outPoint);
-        double dur = pieces.Sum(p => p.Duration);
+        var pieces = timeline.Slice(inPoint, outPoint, regions);
+        ShowOutputLength();
+        if (pieces.Count == 0)
+        {
+            SetSizeBar(double.NaN);
+            EstText.Text = "—";
+            RateText.Text = "剪輯範圍都被刪除了";
+            AudioNote.Text = "";
+            HintBox.Visibility = Visibility.Collapsed;
+            return;
+        }
+        double dur = pieces.Sum(p => p.OutDuration);
         var first = timeline.Segments[pieces[0].Segment].Media;
         var audio = EncodePlanner.PlanAudio(timeline, pieces, RemoveAudio, Lossless);
         EncodePlanner.OutputSize(first, Lossless ? 0 : SelectedHeight, out int w, out int h);
         double pixelRatio = (double)w * h / Math.Max(1, first.Width * first.Height);
-        double srcKbps = pieces.Sum(p => timeline.Segments[p.Segment].Media.VideoBitrate * p.Duration) / dur / 1000;
+        double srcKbps = EncodePlanner.SourceKbps(timeline, pieces);
         var plan = EncodePlanner.ComputeSize(settings.LimitMB, dur, audio.Kbps, srcKbps, pixelRatio, first.VideoCodec, SelectedCodec, Lossless);
 
-        SizeRing.Value = Lossless ? double.NaN : plan.EstimatedMB / settings.LimitMB;
+        SetSizeBar(plan.EstimatedMB / settings.LimitMB);
         EstText.Text = plan.EstimatedMB.ToString("0.0");
-        LimitRun.Text = Lossless ? " MB（無損不限大小）" : $" / {settings.LimitMB:0.#} MB";
-        RateText.Text = $"影片 {plan.VideoKbps / 1000:0.0} Mbps · {h}p"
+        OutputToggle.Tag = $"{OutLengthText.Text} · " + (Lossless ? "無損" : $"{plan.EstimatedMB:0.0} MB");
+        RateText.Text = $"影片 {h}p · {plan.VideoKbps / 1000:0.0} Mbps"
                         + (audio.Mode == AudioMode.None ? "" : $"\n聲音 {audio.Kbps:0} kbps");
         AudioNote.Text = audio.Describe();
 
         string hint = null;
         if (!Lossless && plan.LowBitrate && h > 720) hint = "流量偏低，畫面可能模糊。建議降低解析度或縮短剪輯範圍。";
         else if (!Lossless && plan.LowBitrate) hint = "剪輯範圍較長，流量偏低，畫面可能模糊。";
-        else if (!timeline.IsUniform && pieces.Count > 1 && Lossless) hint = "各檔格式不同，無損合併可能失敗，建議關閉無損模式。";
         HintText.Text = hint;
         HintBox.Visibility = hint == null ? Visibility.Collapsed : Visibility.Visible;
 
-        if (Lossless) _ = UpdateKeyframeNoteAsync(pieces[0]);
+        if (Lossless) _ = UpdateKeyframeNoteAsync(pieces[0], regions.Any(r => r.Kind == RegionKind.Cut && r.End > inPoint && r.Start < outPoint));
+    }
+
+    static readonly Brush OverLimitBrush = Frozen(Color.FromRgb(0xFB, 0x71, 0x85));
+
+    /// <summary>Fills the bar to the estimate's share of the limit (red past it); NaN leaves it empty.</summary>
+    void SetSizeBar(double fraction)
+    {
+        double f = double.IsNaN(fraction) ? 0 : Math.Max(0, Math.Min(1, fraction));
+        SizeBar.ColumnDefinitions[0].Width = new GridLength(f, GridUnitType.Star);
+        SizeBar.ColumnDefinitions[1].Width = new GridLength(1 - f, GridUnitType.Star);
+        bool over = fraction > 1;
+        if (over) SizeBarFill.Background = OverLimitBrush;
+        else SizeBarFill.SetResourceReference(Border.BackgroundProperty, "ProgressGradient");
+        SizeBarText.Text = double.IsNaN(fraction) ? $"上限 {settings.LimitMB:0.#} MB"
+            : over ? $"超過上限 {settings.LimitMB:0.#} MB" : $"{fraction * 100:0}% · 上限 {settings.LimitMB:0.#} MB";
+        if (over) SizeBarText.Foreground = OverLimitBrush;
+        else SizeBarText.SetResourceReference(TextBlock.ForegroundProperty, "Text3Brush");
+    }
+
+    /// <summary>Output length, plus how the regions in the cut got it there: "原 06:00 · 縮時 −1:40 · 刪除 −0:30".</summary>
+    void ShowOutputLength()
+    {
+        double length = TimeRegion.OutputDuration(inPoint, outPoint, regions);
+        OutLengthText.Text = length > 0.001 ? LengthString(length) : "—";
+        TimeRegion.Savings(inPoint, outPoint, regions, out var sped, out var cut);
+        if (sped < 0.05 && cut < 0.05) return;
+        var parts = new List<string> { "原 " + LengthString(outPoint - inPoint) };
+        if (sped >= 0.05) parts.Add("縮時 −" + LengthString(sped));
+        if (cut >= 0.05) parts.Add("刪除 −" + LengthString(cut));
+        OutBreakdown.Text = string.Join(" · ", parts);
+        OutBreakdown.Visibility = Visibility.Visible;
     }
 
     int keyframeQuery;
 
     /// <summary>Shows where a stream-copy cut will really start, since it can only begin on a keyframe.</summary>
-    async Task UpdateKeyframeNoteAsync(Piece first)
+    /// <param name="cuts">Cut regions split the range; every piece after one also starts on a keyframe.</param>
+    async Task UpdateKeyframeNoteAsync(Piece first, bool cuts)
     {
         int id = ++keyframeQuery;
         var seg = timeline.Segments[first.Segment];
@@ -1164,9 +1522,10 @@ public partial class MainWindow : Window
         catch { return; }
         if (id != keyframeQuery) return;
         double early = first.Start - key;
-        LosslessNote.Text = early < 0.05
+        LosslessNote.Text = (early < 0.05
             ? "不重新編碼，幾秒完成。起點剛好在關鍵影格上，不會提前。"
-            : $"不重新編碼，幾秒完成。起點只能從關鍵影格開始，實際會從 {TimeFormat.Format(seg.Offset + key)} 開始（提早 {early:0.0} 秒）。";
+            : $"不重新編碼，幾秒完成。起點只能從關鍵影格開始，實際會從 {TimeFormat.Format(seg.Offset + key)} 開始（提早 {early:0.0} 秒）。")
+            + (cuts ? "刪除區段之後的每一段也會從前一個關鍵影格開始。" : "");
     }
 
     void UpdateExportEnabled()
@@ -1184,19 +1543,27 @@ public partial class MainWindow : Window
         if (outPoint - inPoint < 0.1) return;
         player.Pause();
 
-        var pieces = timeline.Slice(inPoint, outPoint);
+        var pieces = timeline.Slice(inPoint, outPoint, regions);
+        if (pieces.Count == 0)
+        {
+            ShowResult(false, "沒有可輸出的內容", "剪輯範圍內的影片都在刪除區段裡。", warn: true);
+            return;
+        }
+        double outLength = pieces.Sum(p => p.OutDuration);
         var req = new ExportRequest
         {
             Timeline = timeline,
             In = inPoint,
             Out = outPoint,
+            Regions = regions.Select(r => r.Clone()).ToList(),
+            TimelapseAudio = settings.TimelapseAudio,
             Codec = SelectedCodec,
             Encoder = SelectedEncoder,
             TargetHeight = SelectedHeight,
             RemoveAudio = RemoveAudio,
             Lossless = Lossless,
             LimitMB = settings.LimitMB,
-            OutputPath = BuildOutputPath(pieces),
+            OutputPath = BuildOutputPath(pieces, outLength),
         };
         if (req.Encoder == null && !req.Lossless) return;
 
@@ -1252,7 +1619,7 @@ public partial class MainWindow : Window
         {
             lastOutput = result.OutputPath;
             var mb = result.Bytes / 1048576.0;
-            var body = $"{Path.GetFileName(result.OutputPath)}\n{mb:0.0} MB · {outPoint - inPoint:0.0} 秒 · 花費 {sw.Elapsed.TotalSeconds:0} 秒";
+            var body = $"{Path.GetFileName(result.OutputPath)}\n{mb:0.0} MB · {LengthString(outLength)} · 花費 {sw.Elapsed.TotalSeconds:0} 秒";
             if (result.Attempts > 1) body += "\n第一次超過上限，已自動降低流量重新編碼。";
             if (encoderNote != null) body += "\n" + encoderNote;
             if (result.OverLimit && !req.Lossless)
@@ -1264,13 +1631,14 @@ public partial class MainWindow : Window
 
     void Cancel_Click(object sender, RoutedEventArgs e) => exportCts?.Cancel();
 
-    string BuildOutputPath(List<Piece> pieces)
+    /// <param name="length">Length of the output, after speeding up and leaving out regions.</param>
+    string BuildOutputPath(List<Piece> pieces, double length)
     {
         var p = pieces[0];
         var seg = timeline.Segments[p.Segment];
         var dir = OutputDir(seg.Media.Path);
         var start = TimeSpan.FromSeconds(Math.Floor(p.Start));
-        var name = $"{Path.GetFileNameWithoutExtension(seg.Media.Path)}_{(int)start.TotalMinutes:00}m{start.Seconds:00}s_{outPoint - inPoint:0}s";
+        var name = $"{Path.GetFileNameWithoutExtension(seg.Media.Path)}_{(int)start.TotalMinutes:00}m{start.Seconds:00}s_{length:0}s";
         var path = Path.Combine(dir, name + ".mp4");
         for (int i = 2; File.Exists(path); i++)
             path = Path.Combine(dir, $"{name} ({i}).mp4");
@@ -1541,6 +1909,45 @@ public sealed class MessageItem
     public Brush Back { get; set; }
     public Brush Line { get; set; }
     public Visibility ActionsVisibility { get; set; }
+}
+
+/// <summary>One region's card in the inspector; <see cref="Refresh"/> re-reads everything after an edit.</summary>
+public sealed class RegionItem : INotifyPropertyChanged
+{
+    double inPoint, outPoint;
+
+    public RegionItem(TimeRegion region) => Region = region;
+
+    public TimeRegion Region { get; }
+    public bool IsCut => Region.Kind == RegionKind.Cut;
+    public string Glyph => IsCut ? "\uE8C6" : "\uEB9D";
+    public string Title => IsCut ? "刪除 " + TimeFormat.FormatShort(Region.Length) : "縮時 ×" + TimeRegion.FormatSpeed(Region.Speed);
+    public string StartText => TimeFormat.Format(Region.Start);
+    public string EndText => TimeFormat.Format(Region.End);
+    public string TargetText => TimeFormat.Format(Region.Target);
+    public Visibility TargetVisibility => IsCut ? Visibility.Collapsed : Visibility.Visible;
+    public Visibility NoteVisibility => Note == null ? Visibility.Collapsed : Visibility.Visible;
+
+    /// <summary>How the in/out range trims this region, if it does.</summary>
+    public string Note
+    {
+        get
+        {
+            double a = Math.Max(Region.Start, inPoint), b = Math.Min(Region.End, outPoint);
+            if (b - a <= 0.001) return "不在剪輯範圍內，不會用到。";
+            if (a - Region.Start < 0.001 && Region.End - b < 0.001) return null;
+            return IsCut ? "只有一部分在剪輯範圍內。" : $"只有一部分在剪輯範圍內，輸出 {TimeFormat.FormatShort((b - a) / Region.Speed)}。";
+        }
+    }
+
+    public void Refresh(double inPoint, double outPoint)
+    {
+        this.inPoint = inPoint;
+        this.outPoint = outPoint;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(null));
+    }
+
+    public event PropertyChangedEventHandler PropertyChanged;
 }
 
 public sealed class EncoderMenuItem

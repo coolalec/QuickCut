@@ -45,10 +45,10 @@ public sealed class MediaInfo
             if (!HasAudio) return "無";
             // Sample rate and bitrate shown separately: "48k" alone reads like a bitrate.
             var parts = new List<string> { AudioCodec?.ToUpperInvariant() };
-            if (AudioSampleRate > 0) parts.Add($"{AudioSampleRate / 1000.0:0.#} kHz");
-            parts.Add(AudioChannels == 1 ? "mono" : AudioChannels == 2 ? "stereo" : AudioChannels + "ch");
-            if (AudioBitrate > 0) parts.Add($"{AudioBitrate / 1000.0:0} kbps");
-            return string.Join(" · ", parts);
+            if (AudioSampleRate > 0) parts.Add($"{AudioSampleRate / 1000.0:0.#}kHz");
+            parts.Add(AudioChannels == 1 ? "單聲道" : AudioChannels == 2 ? "立體聲" : AudioChannels + " 聲道");
+            if (AudioBitrate > 0) parts.Add($"{AudioBitrate / 1000.0:0}kbps");
+            return string.Join(" · ", parts);
         }
     }
 }
@@ -61,7 +61,8 @@ public static class MediaProbe
         var args = $"-v error -print_format json -show_format -show_streams {ProcessUtil.Quote(path)}";
         var r = await ProcessUtil.RunAsync(FfmpegLocator.FfprobePath, args, ct).ConfigureAwait(false);
         if (r.ExitCode != 0)
-            throw new InvalidOperationException($"無法讀取 {System.IO.Path.GetFileName(path)}：{r.StdErr.Trim()}");
+            throw new InvalidOperationException($"無法讀取 {System.IO.Path.GetFileName(path)}：" +
+                (string.IsNullOrWhiteSpace(r.StdErr) ? ProcessUtil.DescribeExit(r.ExitCode) : r.StdErr.Trim()));
 
         var root = new JavaScriptSerializer { MaxJsonLength = int.MaxValue }.DeserializeObject(r.StdOut) as Dictionary<string, object>
                    ?? throw new InvalidOperationException($"無法解析 {System.IO.Path.GetFileName(path)} 的影片資訊");
