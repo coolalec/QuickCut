@@ -1,7 +1,8 @@
-# Moves ffmpeg.json to the newest gyan.dev release build (tags like 9.0.2; git builds are ignored).
-#   pwsh update-ffmpeg.ps1 [-DryRun]
+﻿# Moves ffmpeg.json to the newest gyan.dev release build (tags like 9.0.2; git builds are ignored).
+#   pwsh update-ffmpeg.ps1 [-DryRun] [-Commit]
 # Prints the decision; when it updates, writes old= / new= to $env:GITHUB_OUTPUT for the workflow.
-param([switch]$DryRun)
+# -Commit (CI) also commits ffmpeg.json as github-actions[bot], pushes it and writes sha= for the build to check out.
+param([switch]$DryRun, [switch]$Commit)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
@@ -52,4 +53,20 @@ $json = "{`n  `"version`": `"$new`",`n  `"sha256`": `"$sha`"`n}`n"
 if ($env:GITHUB_OUTPUT) {
     "old=$($pin.version)" | Add-Content $env:GITHUB_OUTPUT
     "new=$new" | Add-Content $env:GITHUB_OUTPUT
+}
+
+if ($Commit) {
+    function Invoke-Git { & git -C $PSScriptRoot @args; if ($LASTEXITCODE -ne 0) { throw "git $args failed" } }
+    Invoke-Git config user.name 'github-actions[bot]'
+    Invoke-Git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+    Invoke-Git commit -m "更新 FFmpeg $($pin.version) → $new" -- $pinPath
+    # main may have moved since checkout (another push); rebase onto it once and try again.
+    & git -C $PSScriptRoot push origin HEAD:main
+    if ($LASTEXITCODE -ne 0) {
+        Invoke-Git pull --rebase origin main
+        Invoke-Git push origin HEAD:main
+    }
+    $head = Invoke-Git rev-parse HEAD
+    "Pushed $head"
+    if ($env:GITHUB_OUTPUT) { "sha=$head" | Add-Content $env:GITHUB_OUTPUT }
 }

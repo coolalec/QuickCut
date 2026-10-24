@@ -1,5 +1,8 @@
 name: update-ffmpeg
 
+# Every push to main already runs this check (build.yml). This covers quiet stretches without pushes:
+# weekly while GitHub keeps the schedule enabled, and by hand from Actions → update-ffmpeg → Run workflow.
+
 on:
   schedule:
     - cron: '0 2 * * 1' # Mondays 10:00 Taiwan time
@@ -16,7 +19,7 @@ jobs:
   check:
     runs-on: ubuntu-latest
     outputs:
-      sha: ${{ steps.commit.outputs.sha }}
+      sha: ${{ steps.bump.outputs.sha }}
     steps:
       - uses: actions/checkout@v7
 
@@ -25,17 +28,7 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: ./QuickCut/update-ffmpeg.ps1
-
-      - name: Commit ffmpeg.json
-        id: commit
-        if: steps.bump.outputs.new != ''
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -am "更新 FFmpeg ${{ steps.bump.outputs.old }} → ${{ steps.bump.outputs.new }}"
-          git push
-          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        run: ./QuickCut/update-ffmpeg.ps1 -Commit
 
   # The artifact from this build is the one to try before tagging a release.
   build:

@@ -1,6 +1,8 @@
 name: build
 
-# push to main      → build, publish pre-release vX.Y.Z.N (keeps the newest 5)
+# push to main      → bump ffmpeg.json first if gyan.dev has a newer FFmpeg (so the update doesn't depend on the
+#                      update-ffmpeg schedule, which GitHub turns off in quiet repos), then build and publish
+#                      pre-release vX.Y.Z.N (keeps the newest 5)
 # push tag vX.Y.Z   → build, publish release vX.Y.Z
 # promote.yml       → calls this with release_tag to turn a tested pre-release's commit into a release
 # update-ffmpeg.yml → calls this after it commits a new ffmpeg.json (pushes made with GITHUB_TOKEN start no workflows)
@@ -31,13 +33,34 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Pushes the bump with GITHUB_TOKEN, which starts no new run; the build below checks out that commit instead.
+  ffmpeg:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      sha: ${{ steps.bump.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # A failed check (API hiccup, a release without a digest) must not stop the build; it keeps the pinned FFmpeg.
+      - name: Look for a newer FFmpeg release build
+        id: bump
+        continue-on-error: true
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./QuickCut/update-ffmpeg.ps1 -Commit
+
   build:
+    needs: ffmpeg
+    if: ${{ !cancelled() }}
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ needs.ffmpeg.outputs.sha || inputs.ref }}
           fetch-depth: 0 # publish.ps1 derives the version from tags
 
       # No cache for FFmpeg on purpose: get-ffmpeg.ps1 downloads it and checks the SHA256 pinned in
