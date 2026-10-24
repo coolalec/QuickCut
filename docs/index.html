@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>QuickCut 影片快速剪輯</title>
-<meta name="description" content="QuickCut：選好起訖點、指定檔案大小，一鍵輸出。Windows 免安裝的快速影片剪輯工具，支援多段影片接續剪輯與顯示卡硬體編碼。">
+<meta name="description" content="QuickCut：選好起訖點、指定檔案大小，一鍵輸出。Windows 免安裝的快速影片剪輯工具，支援多段影片接續剪輯、縮時與刪除區段、顯示卡硬體編碼。">
 <meta property="og:title" content="QuickCut 影片快速剪輯">
 <meta property="og:description" content="選起訖點、指定檔案大小，一鍵輸出。Windows 10 / 11 免安裝。">
 <meta property="og:image" content="https://coolalec.github.io/QuickCut/images/social-preview.png">
@@ -95,6 +95,10 @@
   .card p { margin: 0; color: var(--text-2); font-size: 15px; }
   .ico { width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center; color: #fff; background: linear-gradient(135deg, #22d3ee -25%, #5b8cff 40%, #8b5cf6); box-shadow: 0 6px 18px rgba(91, 140, 255, .35); }
   .ico svg { width: 21px; height: 21px; }
+  .card.wide { grid-column: 1 / -1; display: grid; grid-template-columns: auto 1fr; gap: 0 18px; align-items: center; }
+  .card.wide .ico { grid-row: span 2; }
+  .card.wide h3 { margin: 0 0 4px; }
+  .badge { margin-left: 8px; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; vertical-align: 2px; color: #fff; background: linear-gradient(120deg, #f59e0b, #f97316); }
 
   table { width: 100%; border-collapse: collapse; font-size: 15px; }
   .keys { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--panel); }
@@ -159,7 +163,7 @@
       <div class="shot">
         <picture>
           <source srcset="images/screenshot-dark.png" media="(prefers-color-scheme: dark)">
-          <img src="images/screenshot-light.png" width="1600" height="862" alt="QuickCut 主畫面：上方是三個分段檔，中間是預覽，下方時間軸已選取 14 秒到 41.5 秒，右側是檔案大小與輸出設定">
+          <img src="images/screenshot-light.png" width="1600" height="862" alt="QuickCut 主畫面：上方是三個分段檔，中間是預覽，下方時間軸選取 0:20 到 5:40，其中 1:30 到 3:30 縮成 20 秒、4:15 到 4:45 刪除，右側是來源影片資訊與輸出長度、預估大小">
         </picture>
       </div>
     </div>
@@ -170,6 +174,11 @@
       <h2>功能</h2>
       <p class="lead">不用學剪輯軟體，從開檔到輸出只要幾個步驟。</p>
       <div class="grid">
+        <div class="card wide">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 5 12 12 3 19 3 5"/><polygon points="12 5 21 12 12 19 12 5"/></svg></div>
+          <h3>縮時與刪除區段<span class="badge">v1.1 新功能</span></h3>
+          <p>把冗長的一段加速成指定長度（例如 25 分鐘縮成 2 分鐘），或整段刪掉，其餘照常播放；在時間軸上直接拖曳調整，輸出長度即時顯示。</p>
+        </div>
         <div class="card">
           <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M8 6v12M16 6v12"/></svg></div>
           <h3>多段檔接成一條時間軸</h3>
@@ -178,7 +187,7 @@
         <div class="card">
           <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h9"/><path d="M17 18h6M20 15v6"/><path d="M8 9h8M8 13h5"/></svg></div>
           <h3>指定檔案大小</h3>
-          <p>設定大小上限（例如上傳網站限制的 30 MB），自動計算流量；硬體編碼超出時會自動降流量重編。</p>
+          <p>設定大小上限（例如上傳網站限制的 30 MB），依輸出長度自動計算流量；硬體編碼超出時會自動降流量重編。</p>
         </div>
         <div class="card">
           <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3"/></svg></div>
@@ -193,7 +202,7 @@
         <div class="card">
           <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
           <h3>無損快速剪輯</h3>
-          <p>不重新編碼、保留原始畫質與解析度，幾秒內完成；起點會對齊關鍵影格並顯示實際起點。</p>
+          <p>不重新編碼、保留原始畫質與解析度，幾秒內完成；起點會對齊關鍵影格並顯示實際起點。也能搭配刪除區段使用。</p>
         </div>
         <div class="card">
           <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg></div>
@@ -219,7 +228,9 @@
           <tr><td><kbd>S</kbd></td><td>目前畫面存成圖片</td></tr>
           <tr><td><kbd>M</kbd></td><td>預覽聲音開／關</td></tr>
           <tr><td><kbd>+</kbd> <kbd>-</kbd> <kbd>\</kbd></td><td>放大／縮小時間軸／顯示全部</td></tr>
-          <tr><td>時間軸按右鍵</td><td>把較近的起點或終點移到該處</td></tr>
+          <tr><td><kbd>T</kbd> / <kbd>D</kbd></td><td>從目前位置新增縮時／刪除區段</td></tr>
+          <tr><td><kbd>Shift</kbd> + 拖曳時間軸</td><td>畫出新區段</td></tr>
+          <tr><td><kbd>Alt</kbd> + 拖曳色帶</td><td>整段移動區段</td></tr>
           <tr><td><kbd>Ctrl</kbd> + <kbd>O</kbd> / <kbd>Ctrl</kbd> + <kbd>S</kbd></td><td>開啟影片／輸出</td></tr>
         </table>
       </div>
