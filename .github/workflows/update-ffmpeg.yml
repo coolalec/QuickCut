@@ -1,0 +1,46 @@
+name: update-ffmpeg
+
+on:
+  schedule:
+    - cron: '0 2 * * 1' # Mondays 10:00 Taiwan time
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  # Passed on to build.yml, which attests the build
+  id-token: write
+  attestations: write
+  artifact-metadata: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.commit.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Look for a newer FFmpeg release build
+        id: bump
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./QuickCut/update-ffmpeg.ps1
+
+      - name: Commit ffmpeg.json
+        id: commit
+        if: steps.bump.outputs.new != ''
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -am "FFmpeg ${{ steps.bump.outputs.old }} → ${{ steps.bump.outputs.new }}"
+          git push
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  # The artifact from this build is the one to try before tagging a release.
+  build:
+    needs: check
+    if: needs.check.outputs.sha != ''
+    uses: ./.github/workflows/build.yml
+    with:
+      ref: ${{ needs.check.outputs.sha }}

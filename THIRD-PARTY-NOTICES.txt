@@ -1,0 +1,23 @@
+QuickCut third-party notices
+============================
+
+QuickCut itself is licensed under the MIT License (see LICENSE.txt).
+
+FFmpeg
+------
+The ffmpeg\ folder contains an unmodified FFmpeg shared build for 64-bit Windows
+made by Gyan Doshi (https://www.gyan.dev/ffmpeg/builds/), downloaded from
+https://github.com/GyanD/codexffmpeg/releases.
+
+This build is licensed under the GNU General Public License version 3
+(see ffmpeg\LICENSE). Its exact version, the FFmpeg source commit and the
+libraries it includes are listed in ffmpeg\README.txt.
+
+Corresponding source code:
+  FFmpeg:              https://github.com/FFmpeg/FFmpeg (commit listed in ffmpeg\README.txt)
+                       https://ffmpeg.org/download.html
+  Build configuration: https://www.gyan.dev/ffmpeg/builds/
+  Bundled libraries:   source links are listed in ffmpeg\README.txt
+
+QuickCut runs ffmpeg.exe and ffprobe.exe as separate programs; it does not link
+to FFmpeg. FFmpeg is a trademark of Fabrice Bellard.

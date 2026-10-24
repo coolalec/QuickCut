@@ -1,0 +1,61 @@
+<!-- Light palette. Every key here must also exist in Dark.xaml; ThemeManager swaps the two at runtime. -->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <SolidColorBrush x:Key="BgBrush" Color="#F3F5FA"/>
+    <SolidColorBrush x:Key="PanelBrush" Color="#D9FFFFFF"/>
+    <SolidColorBrush x:Key="SunkenBrush" Color="#EAEEF5"/>
+    <SolidColorBrush x:Key="LineBrush" Color="#1F0F172A"/>
+    <SolidColorBrush x:Key="HoverBrush" Color="#120F172A"/>
+    <SolidColorBrush x:Key="PressedBrush" Color="#1F0F172A"/>
+    <SolidColorBrush x:Key="TrackBrush" Color="#260F172A"/>
+    <SolidColorBrush x:Key="ThumbBrush" Color="#400F172A"/>
+    <SolidColorBrush x:Key="KnobBrush" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="TextBrush" Color="#151A27"/>
+    <SolidColorBrush x:Key="Text2Brush" Color="#4A5468"/>
+    <SolidColorBrush x:Key="Text3Brush" Color="#7A8397"/>
+    <SolidColorBrush x:Key="PopupBrush" Color="#FFFFFF"/>
+    <!-- Buttons and tabs: a step above panels so they stand out from the background -->
+    <SolidColorBrush x:Key="ControlBrush" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="ControlLineBrush" Color="#330F172A"/>
+
+    <!-- Window regions -->
+    <SolidColorBrush x:Key="TitleBarBrush" Color="#B3FFFFFF"/>
+    <SolidColorBrush x:Key="RailBrush" Color="#80FFFFFF"/>
+    <SolidColorBrush x:Key="InspectorBrush" Color="#99FFFFFF"/>
+    <SolidColorBrush x:Key="StatusBrush" Color="#CCFFFFFF"/>
+    <RadialGradientBrush x:Key="GlowABrush" Center="0.88,-0.08" GradientOrigin="0.88,-0.08" RadiusX="0.65" RadiusY="0.75">
+        <GradientStop Color="#DCD6FB" Offset="0"/>
+        <GradientStop Color="#00DCD6FB" Offset="1"/>
+    </RadialGradientBrush>
+    <RadialGradientBrush x:Key="GlowBBrush" Center="-0.05,1.1" GradientOrigin="-0.05,1.1" RadiusX="0.6" RadiusY="0.7">
+        <GradientStop Color="#CDEFF6" Offset="0"/>
+        <GradientStop Color="#00CDEFF6" Offset="1"/>
+    </RadialGradientBrush>
+
+    <!-- Text accents -->
+    <SolidColorBrush x:Key="RateBrush" Color="#3554C7"/>
+    <SolidColorBrush x:Key="HintTextBrush" Color="#8A5300"/>
+    <SolidColorBrush x:Key="HintBackBrush" Color="#2EFBBF24"/>
+    <SolidColorBrush x:Key="OkTextBrush" Color="#047857"/>
+    <SolidColorBrush x:Key="WarnTextBrush" Color="#92400E"/>
+    <SolidColorBrush x:Key="VersionBackBrush" Color="#1F8B5CF6"/>
+    <SolidColorBrush x:Key="VersionLineBrush" Color="#4D8B5CF6"/>
+    <SolidColorBrush x:Key="VersionTextBrush" Color="#6D28D9"/>
+
+    <!-- Timeline and gauge (read from code) -->
+    <SolidColorBrush x:Key="TlSeg0" Color="#D9E1F5"/>
+    <SolidColorBrush x:Key="TlSeg1" Color="#E2DCF7"/>
+    <SolidColorBrush x:Key="TlSeg2" Color="#D5ECF1"/>
+    <SolidColorBrush x:Key="TlLabel0" Color="#2F4A9A"/>
+    <SolidColorBrush x:Key="TlLabel1" Color="#5238AE"/>
+    <SolidColorBrush x:Key="TlLabel2" Color="#17707F"/>
+    <SolidColorBrush x:Key="TlLabelBack" Color="#D9FFFFFF"/>
+    <SolidColorBrush x:Key="TlTick" Color="#400F172A"/>
+    <SolidColorBrush x:Key="TlTrack" Color="#0F0F172A"/>
+    <SolidColorBrush x:Key="TlWaveIdle" Color="#B4BED6"/>
+    <SolidColorBrush x:Key="TlWaveActive" Color="#4F7BF0"/>
+    <SolidColorBrush x:Key="TlDim" Color="#8CF3F5FA"/>
+    <SolidColorBrush x:Key="TlHead" Color="#151A27"/>
+    <SolidColorBrush x:Key="RingTrackBrush" Color="#1A0F172A"/>
+    <Color x:Key="WindowBorderColor">#D5DAE5</Color>
+</ResourceDictionary>

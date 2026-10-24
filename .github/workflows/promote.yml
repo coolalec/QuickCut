@@ -1,0 +1,60 @@
+name: promote
+
+# Turns a tested pre-release into a release: tags the same commit vX.Y.Z and rebuilds it,
+# so the exe says X.Y.Z instead of the pre-release's X.Y.Z.N.
+on:
+  workflow_dispatch:
+    inputs:
+      prerelease:
+        description: 'Pre-release tag to promote, e.g. v0.0.0.3'
+        required: true
+        type: string
+      version:
+        description: 'Release version, e.g. 1.0.0'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  # Passed on to build.yml, which attests the build
+  id-token: write
+  attestations: write
+  artifact-metadata: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.tag.outputs.sha }}
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Tag the pre-release's commit
+        id: tag
+        env:
+          PRERELEASE: ${{ inputs.prerelease }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          VERSION="${VERSION#v}"
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Version must look like 1.2.0, got '$VERSION'"; exit 1
+          fi
+          TAG="v$VERSION"
+          if git rev-parse -q --verify "refs/tags/$TAG" > /dev/null; then
+            echo "::error::$TAG already exists"; exit 1
+          fi
+          SHA=$(git rev-parse -q --verify "refs/tags/$PRERELEASE^{commit}") || { echo "::error::No tag $PRERELEASE"; exit 1; }
+          git tag "$TAG" "$SHA"
+          git push origin "$TAG"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: tag
+    uses: ./.github/workflows/build.yml
+    with:
+      ref: ${{ needs.tag.outputs.sha }}
+      release_tag: ${{ needs.tag.outputs.tag }}

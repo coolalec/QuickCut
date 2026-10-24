@@ -1,0 +1,616 @@
+<Window x:Class="QuickCut.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:c="clr-namespace:QuickCut.Controls"
+        Title="QuickCut"
+        Width="1340" Height="840" MinWidth="1080" MinHeight="700"
+        WindowStartupLocation="CenterScreen" WindowState="Maximized"
+        Background="{DynamicResource BgBrush}" Foreground="{DynamicResource TextBrush}"
+        FontFamily="Segoe UI Variable Text, Segoe UI, Microsoft JhengHei UI" FontSize="12.5"
+        UseLayoutRounding="True" SnapsToDevicePixels="True" AllowDrop="True">
+
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="46" ResizeBorderThickness="6" GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
+    </WindowChrome.WindowChrome>
+
+    <Grid x:Name="Root" Background="{DynamicResource BgBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="46"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="32"/>
+        </Grid.RowDefinitions>
+
+        <!-- Ambient glow -->
+        <Rectangle Grid.RowSpan="3" IsHitTestVisible="False" Fill="{DynamicResource GlowABrush}"/>
+        <Rectangle Grid.RowSpan="3" IsHitTestVisible="False" Fill="{DynamicResource GlowBBrush}"/>
+
+        <!-- Title bar -->
+        <Border Grid.Row="0" Background="{DynamicResource TitleBarBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,0,0,1">
+            <Grid>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
+                    <Button x:Name="RailToggle" Style="{StaticResource IconButton}" Width="34" Height="34" FontSize="14" Margin="0,0,8,0"
+                            Content="&#xE700;" AutomationProperties.Name="顯示／隱藏左側欄" ToolTip="顯示／隱藏左側欄" Click="RailToggle_Click"
+                            WindowChrome.IsHitTestVisibleInChrome="True"/>
+                    <Border Width="26" Height="26" CornerRadius="8" Background="{StaticResource HeroGradient}" Effect="{StaticResource AccentGlow}">
+                        <TextBlock Text="&#xE78A;" Style="{StaticResource Icon}" FontSize="14" Foreground="White" HorizontalAlignment="Center"/>
+                    </Border>
+                    <TextBlock Margin="11,0,0,0" FontFamily="{StaticResource DisplayFont}" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center">
+                        <Run Text="Quick"/><Run Text="Cut" Foreground="{StaticResource BrandTextGradient}"/>
+                    </TextBlock>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="GpuBadge" Style="{StaticResource BadgeButton}" Margin="0,0,10,0" Background="{DynamicResource HoverBrush}" BorderBrush="{DynamicResource LineBrush}"
+                            AutomationProperties.Name="編碼方式" ToolTip="點擊選擇硬體加速或軟體編碼" Click="GpuBadge_Click" WindowChrome.IsHitTestVisibleInChrome="True">
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse x:Name="GpuDot" Width="7" Height="7" Fill="{DynamicResource Text3Brush}" VerticalAlignment="Center" Margin="0,0,7,0"/>
+                            <TextBlock x:Name="GpuText" Text="偵測顯示卡…" FontSize="11.5" Foreground="{DynamicResource Text2Brush}"/>
+                            <TextBlock Text="&#xE70D;" Style="{StaticResource Icon}" FontSize="8" Margin="8,1,0,0" Foreground="{DynamicResource Text3Brush}"/>
+                        </StackPanel>
+                    </Button>
+                    <Popup x:Name="EncoderPopup" PlacementTarget="{Binding ElementName=GpuBadge}" Placement="Bottom" StaysOpen="False" AllowsTransparency="True" PopupAnimation="Fade">
+                        <Border Background="{DynamicResource PopupBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" CornerRadius="10"
+                                Padding="5" Margin="0,6,12,12" MinWidth="240" Effect="{StaticResource DeepShadow}">
+                            <StackPanel>
+                                <TextBlock Text="編碼方式" Foreground="{DynamicResource Text3Brush}" FontSize="11" Margin="10,6,10,4"/>
+                                <ItemsControl x:Name="EncoderList">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button Style="{StaticResource MenuItemButton}" Tag="{Binding}" Click="EncoderItem_Click" AutomationProperties.Name="{Binding Name}">
+                                                <DockPanel>
+                                                    <TextBlock DockPanel.Dock="Right" Text="&#xE73E;" FontSize="12" Foreground="{StaticResource AccentBrush}" Margin="12,0,0,0">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock" BasedOn="{StaticResource Icon}">
+                                                                <Setter Property="Visibility" Value="Hidden"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                    <Ellipse Width="7" Height="7" VerticalAlignment="Top" Margin="0,5,10,0">
+                                                        <Ellipse.Style>
+                                                            <Style TargetType="Ellipse">
+                                                                <Setter Property="Fill" Value="#34D399"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsHardware}" Value="False">
+                                                                        <Setter Property="Fill" Value="#FBBF24"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Ellipse.Style>
+                                                    </Ellipse>
+                                                    <StackPanel>
+                                                        <TextBlock Text="{Binding Name}"/>
+                                                        <TextBlock Text="{Binding Detail}" FontSize="11" Foreground="{DynamicResource Text3Brush}" Margin="0,2,0,0"/>
+                                                    </StackPanel>
+                                                </DockPanel>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+                    </Popup>
+                    <Button x:Name="ThemeButton" Style="{StaticResource IconButton}" Width="34" Height="34" FontSize="14" Margin="0,0,10,0"
+                            Content="&#xE706;" AutomationProperties.Name="佈景主題" ToolTip="佈景主題" Click="ThemeButton_Click"
+                            WindowChrome.IsHitTestVisibleInChrome="True"/>
+                    <Popup x:Name="ThemePopup" PlacementTarget="{Binding ElementName=ThemeButton}" Placement="Bottom" HorizontalOffset="-140"
+                           StaysOpen="False" AllowsTransparency="True" PopupAnimation="Fade">
+                        <Border Background="{DynamicResource PopupBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" CornerRadius="10"
+                                Padding="5" Margin="0,6,12,12" MinWidth="180" Effect="{StaticResource DeepShadow}">
+                            <StackPanel>
+                                <Button Style="{StaticResource MenuItemButton}" Tag="Light" Click="ThemeItem_Click" AutomationProperties.Name="淺色">
+                                    <DockPanel>
+                                        <TextBlock x:Name="ThemeCheckLight" DockPanel.Dock="Right" Text="&#xE73E;" Style="{StaticResource Icon}" FontSize="12" Foreground="{StaticResource AccentBrush}"/>
+                                        <TextBlock Text="&#xE706;" Style="{StaticResource Icon}" FontSize="14" Margin="0,0,10,0"/>
+                                        <TextBlock Text="淺色"/>
+                                    </DockPanel>
+                                </Button>
+                                <Button Style="{StaticResource MenuItemButton}" Tag="Dark" Click="ThemeItem_Click" AutomationProperties.Name="深色">
+                                    <DockPanel>
+                                        <TextBlock x:Name="ThemeCheckDark" DockPanel.Dock="Right" Text="&#xE73E;" Style="{StaticResource Icon}" FontSize="12" Foreground="{StaticResource AccentBrush}"/>
+                                        <TextBlock Text="&#xE708;" Style="{StaticResource Icon}" FontSize="14" Margin="0,0,10,0"/>
+                                        <TextBlock Text="深色"/>
+                                    </DockPanel>
+                                </Button>
+                                <Button Style="{StaticResource MenuItemButton}" Tag="System" Click="ThemeItem_Click" AutomationProperties.Name="依系統設定">
+                                    <DockPanel>
+                                        <TextBlock x:Name="ThemeCheckSystem" DockPanel.Dock="Right" Text="&#xE73E;" Style="{StaticResource Icon}" FontSize="12" Foreground="{StaticResource AccentBrush}"/>
+                                        <TextBlock Text="&#xE770;" Style="{StaticResource Icon}" FontSize="14" Margin="0,0,10,0"/>
+                                        <TextBlock Text="依系統設定"/>
+                                    </DockPanel>
+                                </Button>
+                            </StackPanel>
+                        </Border>
+                    </Popup>
+                    <Button Style="{StaticResource CaptionButton}" Content="&#xE921;" AutomationProperties.Name="最小化" Click="Minimize_Click" WindowChrome.IsHitTestVisibleInChrome="True"/>
+                    <Button x:Name="MaxButton" Style="{StaticResource CaptionButton}" Content="&#xE922;" AutomationProperties.Name="最大化" Click="Maximize_Click" WindowChrome.IsHitTestVisibleInChrome="True"/>
+                    <Button Style="{StaticResource CloseButton}" Content="&#xE8BB;" AutomationProperties.Name="關閉" Click="Close_Click" WindowChrome.IsHitTestVisibleInChrome="True"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Body -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="RailCol" Width="60"/>
+                <ColumnDefinition Width="*" MinWidth="480"/>
+                <ColumnDefinition Width="8"/>
+                <ColumnDefinition x:Name="InspectorCol" Width="310" MinWidth="270" MaxWidth="560"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Rail -->
+            <Border x:Name="Rail" Grid.Column="0" Background="{DynamicResource RailBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,0,1,0">
+                <DockPanel Margin="0,12">
+                    <StackPanel DockPanel.Dock="Top" HorizontalAlignment="Center">
+                        <Button Style="{StaticResource RailButton}" Content="&#xE8E5;" AutomationProperties.Name="開啟影片 (Ctrl+O)" ToolTip="開啟影片 (Ctrl+O)" Click="Open_Click"/>
+                        <Button Style="{StaticResource RailButton}" Content="&#xE838;" AutomationProperties.Name="開啟輸出資料夾" ToolTip="開啟輸出資料夾" Click="OpenOutputFolder_Click"/>
+                    </StackPanel>
+                    <StackPanel DockPanel.Dock="Bottom" VerticalAlignment="Bottom" HorizontalAlignment="Center">
+                        <Button x:Name="LogButton" Style="{StaticResource RailButton}" Content="&#xE7C3;" AutomationProperties.Name="FFmpeg 記錄" ToolTip="FFmpeg 記錄" Click="ToggleLog_Click"/>
+                        <Grid>
+                            <Button x:Name="AboutButton" Style="{StaticResource RailButton}" Content="&#xE946;" AutomationProperties.Name="關於 QuickCut" ToolTip="關於 QuickCut" Click="AboutButton_Click"/>
+                            <!-- Shown when a newer release is out -->
+                            <Ellipse x:Name="UpdateBadge" Width="9" Height="9" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,10,9,0"
+                                     Fill="{StaticResource AccentBrush}" Stroke="{DynamicResource RailBrush}" StrokeThickness="1.5" IsHitTestVisible="False" Visibility="Collapsed"/>
+                        </Grid>
+                        <Popup x:Name="AboutPopup" PlacementTarget="{Binding ElementName=AboutButton}" Placement="Right" HorizontalOffset="10"
+                               StaysOpen="False" AllowsTransparency="True" PopupAnimation="Fade">
+                            <Border Background="{DynamicResource PopupBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" CornerRadius="10"
+                                    Padding="16,14" Margin="6,0,12,14" Width="310" Effect="{StaticResource DeepShadow}">
+                                <StackPanel>
+                                    <DockPanel>
+                                        <Border Width="36" Height="36" CornerRadius="10" Background="{StaticResource HeroGradient}" Effect="{StaticResource AccentGlow}">
+                                            <TextBlock Text="&#xE78A;" Style="{StaticResource Icon}" FontSize="18" Foreground="White" HorizontalAlignment="Center"/>
+                                        </Border>
+                                        <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock FontFamily="{StaticResource DisplayFont}" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center">
+                                                    <Run Text="Quick"/><Run Text="Cut" Foreground="{StaticResource BrandTextGradient}"/>
+                                                </TextBlock>
+                                                <Border Style="{StaticResource Pill}" Padding="7,1" Margin="9,1,0,0" Background="{DynamicResource VersionBackBrush}" BorderBrush="{DynamicResource VersionLineBrush}">
+                                                    <TextBlock x:Name="AboutVersion" FontFamily="{StaticResource MonoFont}" FontSize="10.5" Foreground="{DynamicResource VersionTextBrush}"/>
+                                                </Border>
+                                            </StackPanel>
+                                            <TextBlock Text="影片快速剪輯" Foreground="{DynamicResource Text3Brush}" FontSize="11" Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                    </DockPanel>
+
+                                    <Border Height="1" Background="{DynamicResource LineBrush}" Margin="0,14,0,8"/>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="52"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" MinHeight="22"/><RowDefinition Height="Auto" MinHeight="22"/><RowDefinition Height="Auto" MinHeight="22"/><RowDefinition Height="Auto" MinHeight="22"/>
+                                        </Grid.RowDefinitions>
+                                        <TextBlock Grid.Row="0" Text="作者" Foreground="{DynamicResource Text3Brush}" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Row="1" Text="GitHub" Foreground="{DynamicResource Text3Brush}" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Row="2" Text="FFmpeg" Foreground="{DynamicResource Text3Brush}" VerticalAlignment="Top" Margin="0,3,0,0"/>
+                                        <TextBlock Grid.Row="3" Text="授權" Foreground="{DynamicResource Text3Brush}" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Row="0" Grid.Column="1" Text="coolalec" VerticalAlignment="Center"/>
+                                        <Button Grid.Row="1" Grid.Column="1" Style="{StaticResource LinkButton}" FontSize="12.5" HorizontalAlignment="Left"
+                                                Content="github.com/coolalec/QuickCut" AutomationProperties.Name="在瀏覽器開啟 GitHub 專案頁" ToolTip="https://github.com/coolalec/QuickCut" Click="AboutGitHub_Click"/>
+                                        <TextBlock x:Name="AboutFfmpeg" Grid.Row="2" Grid.Column="1" Text="讀取中…" FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                                   TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,3"/>
+                                        <TextBlock Grid.Row="3" Grid.Column="1" Text="MIT，FFmpeg 為 GPLv3" VerticalAlignment="Center"/>
+                                    </Grid>
+
+                                    <Border Height="1" Background="{DynamicResource LineBrush}" Margin="0,8,0,10"/>
+                                    <DockPanel>
+                                        <Button x:Name="RecheckButton" DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Content="重新檢查" Margin="10,0,0,0"
+                                                AutomationProperties.Name="重新檢查更新" Click="RecheckUpdate_Click"/>
+                                        <TextBlock x:Name="UpdateGlyph" Style="{StaticResource Icon}" FontSize="12" Margin="0,0,7,0"/>
+                                        <TextBlock x:Name="UpdateText" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                        <Button x:Name="DownloadUpdateButton" Style="{StaticResource LinkButton}" Content="前往下載" Margin="10,0,0,0" HorizontalAlignment="Left"
+                                                AutomationProperties.Name="前往下載新版本" Visibility="Collapsed" Click="DownloadUpdate_Click"/>
+                                    </DockPanel>
+                                </StackPanel>
+                            </Border>
+                        </Popup>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+
+            <!-- Editor -->
+            <Grid Grid.Column="1" Margin="16,14,10,12">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*" MinHeight="180"/>
+                    <RowDefinition Height="14"/>
+                    <RowDefinition x:Name="LowerRow" Height="250" MinHeight="236"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- File chips (a tab being dragged floats above the window as a ChipGhost adorner) -->
+                <DockPanel x:Name="ChipsRow" Grid.Row="0" Margin="0,0,0,10" MinHeight="30">
+                    <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" VerticalAlignment="Center" Click="AddVideos_Click"
+                            AutomationProperties.Name="增加影片" ToolTip="把更多影片加入目前的時間軸（依檔名排序，可拖曳分頁調整順序）">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE710;" Style="{StaticResource Icon}" FontSize="11" Margin="0,0,6,0"/>
+                            <TextBlock Text="增加影片"/>
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="ChipsRight" DockPanel.Dock="Right" Style="{StaticResource ArrowButton}" Content="&#xE76C;" Margin="6,0,10,0"
+                            Visibility="Collapsed" AutomationProperties.Name="下一個分頁" ToolTip="往右捲動分頁" Click="ChipsRight_Click"/>
+                    <Button x:Name="ChipsLeft" DockPanel.Dock="Left" Style="{StaticResource ArrowButton}" Content="&#xE76B;" Margin="0,0,6,0"
+                            Visibility="Collapsed" AutomationProperties.Name="上一個分頁" ToolTip="往左捲動分頁" Click="ChipsLeft_Click"/>
+                    <ScrollViewer x:Name="ChipsScroll" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled"
+                                  ScrollChanged="ChipsScroll_ScrollChanged" PreviewMouseWheel="ChipsScroll_PreviewMouseWheel">
+                        <ItemsControl x:Name="FileChips" PreviewMouseLeftButtonDown="FileChips_PreviewMouseLeftButtonDown"
+                                      PreviewMouseMove="FileChips_PreviewMouseMove" PreviewMouseLeftButtonUp="FileChips_PreviewMouseLeftButtonUp"
+                                      LostMouseCapture="FileChips_LostMouseCapture">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button x:Name="chip" Style="{StaticResource ChipButton}" Click="Chip_Click" Tag="{Binding}" AutomationProperties.Name="{Binding Name}"
+                                            ToolTip="點擊跳到這個檔案，拖曳可調整順序">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="&#xE714;" Style="{StaticResource Icon}" FontSize="12" Margin="0,0,7,0"/>
+                                            <TextBlock Text="{Binding Name}"/>
+                                            <TextBlock Text="{Binding Length}" Margin="8,0,0,0" Opacity="0.55" FontFamily="{StaticResource MonoFont}" FontSize="11"/>
+                                            <Button Style="{StaticResource ChipCloseButton}" Tag="{Binding}" Click="RemoveFile_Click"
+                                                    AutomationProperties.Name="從時間軸移除" ToolTip="從時間軸移除這個檔案"/>
+                                        </StackPanel>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+
+                <!-- Preview -->
+                <Border Grid.Row="1" CornerRadius="12" Background="Black" Effect="{StaticResource DeepShadow}"/>
+                <Grid x:Name="PreviewHost" Grid.Row="1" Background="#05070B" SizeChanged="PreviewHost_SizeChanged" MouseLeftButtonUp="PreviewHost_Click">
+                    <Image x:Name="PreviewImage" Stretch="Uniform" RenderOptions.BitmapScalingMode="Linear"/>
+
+                    <Border x:Name="FramePill" Style="{StaticResource Pill}" Background="#A6000000" BorderBrush="#665B8CFF"
+                            HorizontalAlignment="Right" VerticalAlignment="Top" Margin="12" Visibility="Collapsed">
+                        <TextBlock x:Name="FrameText" FontSize="11.5" Foreground="#9FB3FF" FontFamily="{StaticResource MonoFont}"/>
+                    </Border>
+
+                    <!-- Empty / error state -->
+                    <StackPanel x:Name="EmptyState" VerticalAlignment="Center" HorizontalAlignment="Center" TextElement.Foreground="#EEF1F7">
+                        <Grid Width="84" Height="84" HorizontalAlignment="Center">
+                            <Ellipse Fill="#145B8CFF" Stroke="#335B8CFF" StrokeThickness="1"/>
+                            <TextBlock Text="&#xE714;" Style="{StaticResource Icon}" FontSize="34" Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Center" Effect="{StaticResource AccentGlow}"/>
+                        </Grid>
+                        <TextBlock x:Name="EmptyTitle" Text="拖曳影片到這裡" FontFamily="{StaticResource DisplayFont}" FontSize="19" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,20,0,6"/>
+                        <TextBlock x:Name="EmptyBody" Text="可一次放入多個連續的分段檔，會自動依檔名接成一條時間軸" Foreground="#A3ABBD" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="460"/>
+                        <Button x:Name="EmptyOpenButton" Style="{StaticResource PrimaryButton}" Width="160" Margin="0,22,0,0" Click="Open_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE8E5;" Style="{StaticResource Icon}" Margin="0,0,8,0"/>
+                                <TextBlock Text="選擇影片"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+
+                    <Border x:Name="DropOverlay" CornerRadius="12" Background="#305B8CFF" BorderBrush="{StaticResource AccentBrush}" BorderThickness="2" Visibility="Collapsed" IsHitTestVisible="False">
+                        <TextBlock Text="放開以載入影片" FontSize="20" FontWeight="SemiBold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+
+                    <Border x:Name="BusyOverlay" Background="#B0000000" Visibility="Collapsed">
+                        <TextBlock x:Name="BusyText" Text="讀取影片資訊…" FontSize="14" Foreground="#C8CEDB" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                </Grid>
+
+                <GridSplitter Grid.Row="2" Style="{StaticResource RowSplitter}" AutomationProperties.Name="調整預覽高度" ToolTip="拖曳調整預覽與時間軸高度"/>
+
+                <Grid Grid.Row="3">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- Transport -->
+                <Grid Grid.Row="0">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock x:Name="TimeMain" Text="00:00" FontFamily="{StaticResource MonoFont}" FontSize="22"/>
+                        <TextBlock x:Name="TimeMs" Text=".000" FontFamily="{StaticResource MonoFont}" FontSize="22" Foreground="{DynamicResource Text3Brush}"/>
+                        <TextBlock x:Name="TimeTotal" Text=" / 00:00" FontFamily="{StaticResource MonoFont}" FontSize="12.5" Foreground="{DynamicResource Text3Brush}" VerticalAlignment="Bottom" Margin="4,0,0,4"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Button Style="{StaticResource IconButton}" Content="&#xE892;" AutomationProperties.Name="跳到起點 ( [ )" ToolTip="跳到起點 ( [ )" Click="JumpIn_Click"/>
+                        <Button Style="{StaticResource IconButton}" Content="&#xE76B;" AutomationProperties.Name="上一格 (←)" ToolTip="上一格 (←)" Click="PrevFrame_Click" Margin="4,0"/>
+                        <Button x:Name="PlayButton" Style="{StaticResource PlayButton}" AutomationProperties.Name="播放 / 暫停 (Space)" ToolTip="播放 / 暫停 (Space)" Click="Play_Click" Margin="8,0">
+                            <TextBlock x:Name="PlayGlyph" Text="&#xE768;" Margin="2,0,0,0"/>
+                        </Button>
+                        <Button Style="{StaticResource IconButton}" Content="&#xE76C;" AutomationProperties.Name="下一格 (→)" ToolTip="下一格 (→)" Click="NextFrame_Click" Margin="4,0"/>
+                        <Button Style="{StaticResource IconButton}" Content="&#xE893;" AutomationProperties.Name="跳到終點 ( ] )" ToolTip="跳到終點 ( ] )" Click="JumpOut_Click"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <Button x:Name="SnapshotButton" Style="{StaticResource IconButton}" Content="&#xE722;" Margin="0,0,4,0"
+                            AutomationProperties.Name="存成圖片 (S)" ToolTip="把目前畫面存成圖片（原始解析度） (S)" Click="SaveFrame_Click"/>
+                    <Button x:Name="MuteButton" Style="{StaticResource IconButton}" Content="&#xE767;" Margin="0,0,8,0"
+                            AutomationProperties.Name="預覽聲音開關" ToolTip="預覽聲音：開（點擊靜音）" Click="Mute_Click"/>
+                    <Button x:Name="SpeedButton" Style="{StaticResource GhostButton}" Padding="12,6" MinWidth="70"
+                            AutomationProperties.Name="播放速度" ToolTip="播放速度" Click="SpeedButton_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock x:Name="SpeedText" Text="1x" FontFamily="{StaticResource MonoFont}" FontSize="12.5"/>
+                            <TextBlock Text="&#xE70D;" Style="{StaticResource Icon}" FontSize="8" Margin="8,1,0,0"/>
+                        </StackPanel>
+                    </Button>
+                    <Popup x:Name="SpeedPopup" PlacementTarget="{Binding ElementName=SpeedButton}" Placement="Top" StaysOpen="False"
+                           AllowsTransparency="True" PopupAnimation="Fade">
+                        <Border Background="{DynamicResource PopupBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" CornerRadius="10"
+                                Padding="5" Margin="12,12,12,6" MinWidth="130" Effect="{StaticResource DeepShadow}">
+                            <StackPanel x:Name="SpeedMenu">
+                                <TextBlock Text="播放速度" Foreground="{DynamicResource Text3Brush}" FontSize="11" Margin="10,6,10,4"/>
+                            </StackPanel>
+                        </Border>
+                    </Popup>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Timeline -->
+                <Border Grid.Row="1" Style="{StaticResource Glass}" Margin="0,10,0,0" Padding="4,6,4,4">
+                    <DockPanel>
+                        <!-- Zoom -->
+                        <DockPanel DockPanel.Dock="Top" Margin="6,0,6,4" Height="28" LastChildFill="False">
+                            <!-- One pill, every button keeps its place so repeated clicks on ＋ keep zooming.
+                                 The zoom factor in the middle is itself the "show all" button; unzoomed it is plain text. -->
+                            <Border DockPanel.Dock="Right" Height="28" Padding="2" CornerRadius="8" BorderThickness="1"
+                                    Background="{DynamicResource ControlBrush}" BorderBrush="{DynamicResource ControlLineBrush}">
+                                <StackPanel Orientation="Horizontal">
+                                    <Button x:Name="ZoomOutButton" Style="{StaticResource IconButton}" Width="22" Height="22" FontSize="11" Content="&#xE71F;"
+                                            AutomationProperties.Name="縮小時間軸" ToolTip="縮小時間軸（- 鍵 或 Ctrl＋滾輪）" Click="ZoomOut_Click"/>
+                                    <Button x:Name="ShowAllButton" Style="{StaticResource IconButton}" Width="Auto" MinWidth="44" Height="22" IsHitTestVisible="False"
+                                            AutomationProperties.Name="顯示全部" ToolTip="點擊回到顯示全部（\）" Click="ShowAll_Click">
+                                        <TextBlock x:Name="ZoomText" Text="全部" Margin="6,0" FontFamily="{StaticResource MonoFont}" FontSize="11.5"/>
+                                    </Button>
+                                    <Button x:Name="ZoomInButton" Style="{StaticResource IconButton}" Width="22" Height="22" FontSize="11" Content="&#xE8A3;"
+                                            AutomationProperties.Name="放大時間軸" ToolTip="放大時間軸（+ 鍵 或 Ctrl＋滾輪）" Click="ZoomIn_Click"/>
+                                </StackPanel>
+                            </Border>
+                        </DockPanel>
+                        <ScrollBar x:Name="TimelineScroll" DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="8,2,8,0" Visibility="Collapsed"
+                                   ValueChanged="TimelineScroll_ValueChanged"/>
+                        <c:TimelineControl x:Name="TimelineView"/>
+                    </DockPanel>
+                </Border>
+
+                <!-- In / Out -->
+                <Grid Grid.Row="2" Margin="0,10,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="10"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Border Grid.Column="0" Style="{StaticResource Glass}" Padding="12,6">
+                        <DockPanel>
+                            <Ellipse Width="8" Height="8" Fill="{StaticResource InBrush}" VerticalAlignment="Center">
+                                <Ellipse.Effect><DropShadowEffect Color="#34D399" BlurRadius="8" ShadowDepth="0" Opacity="0.9"/></Ellipse.Effect>
+                            </Ellipse>
+                            <Button Style="{StaticResource LinkButton}" Foreground="{DynamicResource Text2Brush}" Margin="9,0,0,0" AutomationProperties.Name="設為目前位置 (I)" ToolTip="設為目前位置 (I)" Click="SetIn_Click">
+                                <TextBlock><Run Text="起點"/><Run Text="  I" Foreground="{DynamicResource Text3Brush}"/></TextBlock>
+                            </Button>
+                            <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Width="28" Height="28" FontSize="12" Content="&#xE7C1;" AutomationProperties.Name="設為目前位置 (I)" ToolTip="設為目前位置 (I)" Click="SetIn_Click"/>
+                            <TextBox x:Name="InBox" Style="{StaticResource BareTextBox}" HorizontalAlignment="Right" VerticalAlignment="Center" MinWidth="96" TextAlignment="Right"
+                                     KeyDown="TimeBox_KeyDown" LostKeyboardFocus="InBox_Commit"/>
+                        </DockPanel>
+                    </Border>
+                    <Border Grid.Column="2" Style="{StaticResource Glass}" Padding="12,6">
+                        <DockPanel>
+                            <Ellipse Width="8" Height="8" Fill="{StaticResource OutBrush}" VerticalAlignment="Center">
+                                <Ellipse.Effect><DropShadowEffect Color="#FB7185" BlurRadius="8" ShadowDepth="0" Opacity="0.9"/></Ellipse.Effect>
+                            </Ellipse>
+                            <Button Style="{StaticResource LinkButton}" Foreground="{DynamicResource Text2Brush}" Margin="9,0,0,0" AutomationProperties.Name="設為目前位置 (O)" ToolTip="設為目前位置 (O)" Click="SetOut_Click">
+                                <TextBlock><Run Text="終點"/><Run Text="  O" Foreground="{DynamicResource Text3Brush}"/></TextBlock>
+                            </Button>
+                            <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Width="28" Height="28" FontSize="12" Content="&#xE7C1;" AutomationProperties.Name="設為目前位置 (O)" ToolTip="設為目前位置 (O)" Click="SetOut_Click"/>
+                            <TextBox x:Name="OutBox" Style="{StaticResource BareTextBox}" HorizontalAlignment="Right" VerticalAlignment="Center" MinWidth="96" TextAlignment="Right"
+                                     KeyDown="TimeBox_KeyDown" LostKeyboardFocus="OutBox_Commit"/>
+                        </DockPanel>
+                    </Border>
+                    <StackPanel Grid.Column="3" Margin="18,0,4,0" VerticalAlignment="Center">
+                        <TextBlock Text="剪輯長度" Foreground="{DynamicResource Text3Brush}" FontSize="11" HorizontalAlignment="Right"/>
+                        <TextBlock x:Name="LengthText" Text="—" FontFamily="{StaticResource MonoFont}" FontSize="17" HorizontalAlignment="Right"/>
+                    </StackPanel>
+                </Grid>
+                </Grid>
+
+                <!-- Log -->
+                <Border x:Name="LogPanel" Grid.Row="4" Style="{StaticResource Glass}" Margin="0,10,0,0" Height="170" Visibility="Collapsed">
+                    <DockPanel>
+                        <DockPanel DockPanel.Dock="Top" Margin="12,8,8,4">
+                            <Button DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Content="清除" Click="ClearLog_Click"/>
+                            <TextBlock Text="FFmpeg 記錄" Style="{StaticResource SectionTitle}" FontSize="12"/>
+                        </DockPanel>
+                        <TextBox x:Name="LogBox" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Background="Transparent" BorderThickness="0"
+                                 Foreground="{DynamicResource Text2Brush}" FontFamily="{StaticResource MonoFont}" FontSize="11" Margin="8,0,4,8" SelectionBrush="{StaticResource AccentBrush}"/>
+                    </DockPanel>
+                </Border>
+            </Grid>
+
+            <GridSplitter Grid.Column="2" Style="{StaticResource ColumnSplitter}" AutomationProperties.Name="調整設定欄寬度" ToolTip="拖曳調整設定欄寬度"/>
+
+            <!-- Inspector -->
+            <Border Grid.Column="3" Background="{DynamicResource InspectorBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1,0,0,0">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="18,16,18,18">
+
+                        <TextBlock Text="來源影片" Style="{StaticResource SectionTitle}"/>
+                        <Border Style="{StaticResource Glass}" Margin="0,10,0,0" Padding="14,10">
+                            <Grid x:Name="SourceGrid">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="58"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" MinHeight="22"/><RowDefinition Height="Auto" MinHeight="22"/><RowDefinition Height="Auto" MinHeight="22"/><RowDefinition Height="Auto" MinHeight="22"/><RowDefinition Height="Auto" MinHeight="22"/><RowDefinition Height="Auto" MinHeight="22"/>
+                                </Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0" Text="編碼" Foreground="{DynamicResource Text3Brush}" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Row="1" Text="解析度" Foreground="{DynamicResource Text3Brush}" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Row="2" Text="流量" Foreground="{DynamicResource Text3Brush}" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Row="3" Text="聲音" Foreground="{DynamicResource Text3Brush}" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Row="4" Text="總長度" Foreground="{DynamicResource Text3Brush}" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="SrcCodec" Grid.Row="0" Grid.Column="1" Text="—" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="SrcRes" Grid.Row="1" Grid.Column="1" Text="—" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="SrcRate" Grid.Row="2" Grid.Column="1" Text="—" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="SrcAudio" Grid.Row="3" Grid.Column="1" Text="—" VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,3"/>
+                                <TextBlock x:Name="SrcLength" Grid.Row="4" Grid.Column="1" Text="—" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Row="5" Text="排序" Foreground="{DynamicResource Text3Brush}" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="SrcOrder" Grid.Row="5" Grid.Column="1" Text="—" VerticalAlignment="Center"
+                                           ToolTip="每個檔案都有拍攝時間時依時間排序，否則依檔名（數字依大小）排序"/>
+                            </Grid>
+                        </Border>
+
+                        <!-- File size: estimate, limit and lossless mode together -->
+                        <TextBlock Text="檔案大小" Style="{StaticResource SectionTitle}" Margin="0,22,0,0"/>
+                        <Border Style="{StaticResource Glass}" Margin="0,10,0,0" Padding="14,12">
+                            <StackPanel>
+                                <DockPanel>
+                                    <c:RingGauge x:Name="SizeRing" Width="68" Height="68"/>
+                                    <StackPanel Margin="14,0,0,0" VerticalAlignment="Center">
+                                        <TextBlock Text="預估檔案大小" Foreground="{DynamicResource Text3Brush}" FontSize="11"/>
+                                        <TextBlock FontFamily="{StaticResource DisplayFont}" Margin="0,1,0,0" TextWrapping="Wrap">
+                                            <Run x:Name="EstText" Text="—" FontSize="22" FontWeight="SemiBold"/><Run x:Name="LimitRun" Text=" / 30 MB" FontSize="12" Foreground="{DynamicResource Text2Brush}"/>
+                                        </TextBlock>
+                                        <TextBlock x:Name="RateText" Text="—" FontFamily="{StaticResource MonoFont}" FontSize="11" Foreground="{DynamicResource RateBrush}" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                    </StackPanel>
+                                </DockPanel>
+
+                                <StackPanel x:Name="LimitOptions">
+                                    <TextBlock Text="檔案大小上限" Style="{StaticResource Caption}"/>
+                                    <DockPanel>
+                                        <TextBlock DockPanel.Dock="Right" Text="MB" Foreground="{DynamicResource Text2Brush}" VerticalAlignment="Center" Margin="7,0,0,0"/>
+                                        <TextBox x:Name="LimitBox" DockPanel.Dock="Right" Style="{StaticResource DarkTextBox}" Width="62" TextAlignment="Right"
+                                                 KeyDown="LimitBox_KeyDown" LostKeyboardFocus="LimitBox_Commit"/>
+                                        <Slider x:Name="LimitSlider" Style="{StaticResource DarkSlider}" Minimum="5" Maximum="200" SmallChange="1" LargeChange="5"
+                                                IsSnapToTickEnabled="True" TickFrequency="1" Margin="0,0,12,0" ValueChanged="LimitSlider_ValueChanged"/>
+                                    </DockPanel>
+                                </StackPanel>
+
+                                <Border Height="1" Background="{DynamicResource LineBrush}" Margin="0,14,0,12"/>
+                                <DockPanel>
+                                    <CheckBox x:Name="LosslessSwitch" DockPanel.Dock="Right" Style="{StaticResource Switch}" Checked="Lossless_Changed" Unchecked="Lossless_Changed"/>
+                                    <TextBlock Text="&#xE945;" Style="{StaticResource Icon}" Foreground="{StaticResource WarnBrush}" FontSize="13"/>
+                                    <TextBlock Text="無損快速剪輯" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                                </DockPanel>
+                                <TextBlock x:Name="LosslessNote" Text="不重新編碼，幾秒完成；起點會對齊前一個關鍵影格。" Foreground="{DynamicResource Text3Brush}"
+                                           FontSize="11" TextWrapping="Wrap" Margin="0,7,0,0" Visibility="Collapsed"/>
+
+                                <Border x:Name="HintBox" Margin="0,12,0,0" CornerRadius="7" Background="{DynamicResource HintBackBrush}" Padding="9,6" Visibility="Collapsed">
+                                    <DockPanel>
+                                        <TextBlock Text="&#xE7BA;" Style="{StaticResource Icon}" Foreground="{StaticResource WarnBrush}" FontSize="12" VerticalAlignment="Top" Margin="0,1,7,0"/>
+                                        <TextBlock x:Name="HintText" Foreground="{DynamicResource HintTextBrush}" FontSize="11.5" TextWrapping="Wrap"/>
+                                    </DockPanel>
+                                </Border>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Text="輸出設定" Style="{StaticResource SectionTitle}" Margin="0,22,0,0"/>
+
+                        <StackPanel x:Name="EncodeOptions">
+                            <TextBlock Text="影片編碼" Style="{StaticResource Caption}"/>
+                            <Border Style="{StaticResource SegHost}">
+                                <UniformGrid Rows="1">
+                                    <RadioButton x:Name="CodecH264" Style="{StaticResource SegRadio}" GroupName="codec" Content="H.264" Checked="Codec_Checked" ToolTip="相容性最好，幾乎所有裝置與播放器都能播放"/>
+                                    <RadioButton x:Name="CodecHevc" Style="{StaticResource SegRadio}" GroupName="codec" Content="H.265" Checked="Codec_Checked" ToolTip="同樣大小畫質較好，但少數舊裝置無法播放"/>
+                                </UniformGrid>
+                            </Border>
+
+                            <TextBlock Text="解析度" Style="{StaticResource Caption}"/>
+                            <Border Style="{StaticResource SegHost}">
+                                <UniformGrid Rows="1">
+                                    <RadioButton x:Name="Res0" Style="{StaticResource SegRadio}" GroupName="res" Content="原始" Tag="0" Checked="Res_Checked"/>
+                                    <RadioButton x:Name="Res1080" Style="{StaticResource SegRadio}" GroupName="res" Content="1080p" Tag="1080" Checked="Res_Checked"/>
+                                    <RadioButton x:Name="Res720" Style="{StaticResource SegRadio}" GroupName="res" Content="720p" Tag="720" Checked="Res_Checked"/>
+                                </UniformGrid>
+                            </Border>
+                        </StackPanel>
+
+                        <TextBlock Text="聲音" Style="{StaticResource Caption}"/>
+                        <Border Style="{StaticResource SegHost}">
+                            <UniformGrid Rows="1">
+                                <RadioButton x:Name="AudioKeep" Style="{StaticResource SegRadio}" GroupName="audio" Content="保留" Checked="Audio_Checked"/>
+                                <RadioButton x:Name="AudioRemove" Style="{StaticResource SegRadio}" GroupName="audio" Content="移除" Checked="Audio_Checked"/>
+                            </UniformGrid>
+                        </Border>
+                        <TextBlock x:Name="AudioNote" Foreground="{DynamicResource Text3Brush}" FontSize="11" Margin="2,6,0,0"/>
+
+                        <Button x:Name="ExportButton" AutomationProperties.Name="輸出影片" Style="{StaticResource PrimaryButton}" Margin="0,20,0,0" Click="Export_Click" IsEnabled="False">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE74E;" Style="{StaticResource Icon}" FontSize="15" Margin="0,0,9,0"/>
+                                <TextBlock Text="輸出影片"/>
+                            </StackPanel>
+                        </Button>
+
+                        <StackPanel x:Name="ProgressPanel" Margin="0,12,0,0" Visibility="Collapsed">
+                            <ProgressBar x:Name="ExportProgress" Style="{StaticResource SlimProgress}" Maximum="1"/>
+                            <DockPanel Margin="0,6,0,0">
+                                <Button DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Foreground="{StaticResource OutBrush}" Content="取消" Click="Cancel_Click"/>
+                                <TextBlock x:Name="ProgressText" Foreground="{DynamicResource Text3Brush}" FontSize="11"/>
+                            </DockPanel>
+                        </StackPanel>
+
+                        <!-- Messages: newest first, each removable -->
+                        <DockPanel x:Name="MessagesHeader" Margin="0,22,0,8" Visibility="Collapsed">
+                            <Button DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Content="全部移除" AutomationProperties.Name="全部移除" Click="ClearMessages_Click"/>
+                            <TextBlock x:Name="MessagesTitle" Text="訊息" Style="{StaticResource SectionTitle}"/>
+                        </DockPanel>
+                        <ScrollViewer x:Name="MessagesScroll" MaxHeight="300" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+                            <ItemsControl x:Name="MessageList">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Margin="0,0,4,8" CornerRadius="9" Padding="12,10" BorderThickness="1" Background="{Binding Back}" BorderBrush="{Binding Line}">
+                                            <StackPanel>
+                                                <DockPanel>
+                                                    <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Width="24" Height="24" FontSize="10" Margin="6,-4,-6,0"
+                                                            VerticalAlignment="Top" Content="&#xE711;" Tag="{Binding}" AutomationProperties.Name="移除訊息" ToolTip="移除這則訊息" Click="RemoveMessage_Click"/>
+                                                    <TextBlock Text="{Binding Glyph}" Style="{StaticResource Icon}" FontSize="14" Margin="0,0,8,0" Foreground="{Binding Accent}" VerticalAlignment="Top"/>
+                                                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                                </DockPanel>
+                                                <TextBlock Text="{Binding Body}" Foreground="{DynamicResource Text2Brush}" FontSize="11.5" TextWrapping="Wrap" Margin="0,5,0,0"/>
+                                                <DockPanel Margin="0,8,0,0">
+                                                    <TextBlock DockPanel.Dock="Right" Text="{Binding Time}" Foreground="{DynamicResource Text3Brush}" FontSize="10.5" VerticalAlignment="Bottom"/>
+                                                    <StackPanel Orientation="Horizontal" Visibility="{Binding ActionsVisibility}">
+                                                        <Button Style="{StaticResource GhostButton}" Content="開啟資料夾" Tag="{Binding}" Click="MessageReveal_Click" Margin="0,0,8,0"/>
+                                                        <Button Style="{StaticResource GhostButton}" Content="開啟" Tag="{Binding}" Click="MessageOpen_Click"/>
+                                                    </StackPanel>
+                                                </DockPanel>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+
+        <!-- Status bar -->
+        <Border Grid.Row="2" Background="{DynamicResource StatusBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,1,0,0">
+            <DockPanel Margin="16,0" TextElement.FontSize="11" TextElement.Foreground="{DynamicResource Text3Brush}">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock x:Name="SaveWarning" Foreground="{StaticResource WarnBrush}" Margin="0,0,16,0" VerticalAlignment="Center" Visibility="Collapsed"
+                               Text="設定無法儲存（程式所在資料夾無法寫入）"/>
+                    <TextBlock Text="&#xE838;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                    <TextBlock x:Name="OutputDirText" Text="與來源影片相同資料夾" VerticalAlignment="Center" MaxWidth="360" TextTrimming="CharacterEllipsis"/>
+                    <Button Style="{StaticResource LinkButton}" Content="變更" Margin="10,0,0,0" Click="ChangeOutputDir_Click"/>
+                    <Button x:Name="ResetOutputDirButton" Style="{StaticResource LinkButton}" Content="重設" Margin="10,0,0,0" Click="ResetOutputDir_Click"
+                            ToolTip="改回輸出到來源影片所在資料夾" Visibility="Collapsed"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border Style="{StaticResource KeyCap}"><TextBlock Text="Space"/></Border><TextBlock Text="播放" Margin="0,0,14,0"/>
+                    <Border Style="{StaticResource KeyCap}"><TextBlock Text="← →"/></Border><TextBlock Text="逐格" Margin="0,0,14,0"/>
+                    <Border Style="{StaticResource KeyCap}"><TextBlock Text="Shift"/></Border><TextBlock Text="±1 秒" Margin="0,0,14,0"/>
+                    <Border Style="{StaticResource KeyCap}"><TextBlock Text="Ctrl"/></Border><TextBlock Text="±10 秒" Margin="0,0,14,0"/>
+                    <Border Style="{StaticResource KeyCap}"><TextBlock Text="I / O"/></Border><TextBlock Text="起點／終點" Margin="0,0,14,0"/>
+                    <Border Style="{StaticResource KeyCap}"><TextBlock Text="[ / ]"/></Border><TextBlock Text="跳到起訖" Margin="0,0,14,0"/>
+                    <Border Style="{StaticResource KeyCap}"><TextBlock Text="S"/></Border><TextBlock Text="存圖"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+    </Grid>
+</Window>

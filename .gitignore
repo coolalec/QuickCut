@@ -1,0 +1,7 @@
+dist/
+ffmpeg-*/
+bin/
+obj/
+.vs/
+*.user
+QuickCut.settings.xml

@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QuickCut 影片快速剪輯</title>
+<meta name="description" content="QuickCut：選好起訖點、指定檔案大小，一鍵輸出。Windows 免安裝的快速影片剪輯工具，支援多段影片接續剪輯與顯示卡硬體編碼。">
+<meta property="og:title" content="QuickCut 影片快速剪輯">
+<meta property="og:description" content="選起訖點、指定檔案大小，一鍵輸出。Windows 10 / 11 免安裝。">
+<meta property="og:image" content="https://coolalec.github.io/QuickCut/images/social-preview.png">
+<meta property="og:url" content="https://coolalec.github.io/QuickCut/">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/png" href="images/icon.png">
+<style>
+  :root {
+    --bg: #f5f6fb;
+    --bg-2: #ffffff;
+    --panel: #ffffff;
+    --line: #e2e6f0;
+    --text: #141826;
+    --text-2: #475069;
+    --text-3: #6b7489;
+    --accent: #4f7cf5;
+    --violet: #7c4ddf;
+    --cyan: #0ea5c4;
+    --glow-a: rgba(91, 140, 255, .18);
+    --glow-b: rgba(139, 92, 246, .14);
+    --kbd: #eef1f8;
+    --shadow: 0 18px 50px rgba(32, 40, 80, .16);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1219;
+      --bg-2: #141826;
+      --panel: rgba(255, 255, 255, .045);
+      --line: rgba(255, 255, 255, .1);
+      --text: #eef1f7;
+      --text-2: #b8c0d0;
+      --text-3: #8a93a8;
+      --accent: #5b8cff;
+      --violet: #8b5cf6;
+      --cyan: #22d3ee;
+      --glow-a: rgba(91, 140, 255, .22);
+      --glow-b: rgba(139, 92, 246, .2);
+      --kbd: rgba(255, 255, 255, .08);
+      --shadow: 0 24px 70px rgba(0, 0, 0, .55);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.7 "Segoe UI Variable Text", "Segoe UI", "Microsoft JhengHei UI", "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", system-ui, sans-serif;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+
+  /* Header */
+  header { position: sticky; top: 0; z-index: 10; backdrop-filter: blur(14px); background: color-mix(in srgb, var(--bg) 78%, transparent); border-bottom: 1px solid var(--line); }
+  header .wrap { display: flex; align-items: center; gap: 12px; height: 60px; }
+  .logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; color: var(--text); }
+  .logo:hover { text-decoration: none; }
+  .logo img { width: 30px; height: 30px; border-radius: 8px; }
+  .brand-cut { background: linear-gradient(90deg, #22d3ee, #8b5cf6); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  header nav { margin-left: auto; display: flex; gap: 22px; font-size: 15px; }
+  header nav a { color: var(--text-2); }
+
+  /* Hero */
+  .hero { position: relative; overflow: hidden; padding: 72px 0 40px; text-align: center; }
+  .hero::before { content: ""; position: absolute; inset: -40% -10% auto; height: 620px; background: radial-gradient(closest-side, var(--glow-a), transparent 70%) 20% 30% / 60% 100% no-repeat, radial-gradient(closest-side, var(--glow-b), transparent 70%) 80% 20% / 60% 100% no-repeat; pointer-events: none; }
+  .hero > * { position: relative; }
+  .hero h1 { margin: 0; font-size: clamp(40px, 7vw, 68px); line-height: 1.1; letter-spacing: -.5px; font-weight: 800; }
+  .hero .tag { margin: 18px auto 0; max-width: 640px; font-size: clamp(17px, 2.4vw, 21px); color: var(--text-2); }
+  .cta { margin-top: 32px; display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+  .btn { display: inline-flex; align-items: center; gap: 10px; padding: 13px 26px; border-radius: 12px; font-weight: 600; font-size: 16px; border: 1px solid var(--line); color: var(--text); background: var(--panel); }
+  .btn:hover { text-decoration: none; border-color: var(--accent); }
+  .btn.primary { color: #fff; border: 0; background: linear-gradient(120deg, #22d3ee -30%, #5b8cff 40%, #8b5cf6); box-shadow: 0 8px 26px rgba(91, 140, 255, .45); }
+  .btn.primary:hover { filter: brightness(1.08); }
+  .btn svg { width: 18px; height: 18px; flex: none; }
+  .meta { margin-top: 14px; font-size: 14px; color: var(--text-3); }
+
+  .shot { margin: 48px auto 0; max-width: 1080px; border-radius: 14px; overflow: hidden; border: 1px solid var(--line); box-shadow: var(--shadow); background: var(--bg-2); }
+  .shot img { display: block; width: 100%; height: auto; }
+
+  /* Sections */
+  section { padding: 72px 0 8px; }
+  section h2 { margin: 0 0 8px; font-size: clamp(26px, 3.6vw, 34px); line-height: 1.3; }
+  section .lead { margin: 0 0 32px; color: var(--text-2); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+  .card { padding: 22px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); }
+  .card h3 { margin: 12px 0 6px; font-size: 18px; }
+  .card p { margin: 0; color: var(--text-2); font-size: 15px; }
+  .ico { width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center; color: #fff; background: linear-gradient(135deg, #22d3ee -25%, #5b8cff 40%, #8b5cf6); box-shadow: 0 6px 18px rgba(91, 140, 255, .35); }
+  .ico svg { width: 21px; height: 21px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  .keys { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--panel); }
+  .keys td { padding: 11px 18px; border-top: 1px solid var(--line); vertical-align: top; }
+  .keys tr:first-child td { border-top: 0; }
+  .keys td:first-child { width: 38%; white-space: nowrap; }
+  kbd { display: inline-block; min-width: 24px; padding: 1px 8px; margin: 0 2px 2px 0; border-radius: 6px; border: 1px solid var(--line); border-bottom-width: 2px; background: var(--kbd); font: 13px/1.6 Consolas, "Cascadia Mono", monospace; text-align: center; color: var(--text); }
+
+  .steps { counter-reset: s; list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+  .steps li { position: relative; padding: 18px 20px 18px 66px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); color: var(--text-2); }
+  .steps li::before { counter-increment: s; content: counter(s); position: absolute; left: 20px; top: 18px; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; color: #fff; background: linear-gradient(135deg, #5b8cff, #8b5cf6); }
+  .steps strong { color: var(--text); }
+  code { font: 14px Consolas, "Cascadia Mono", monospace; padding: 1px 6px; border-radius: 6px; background: var(--kbd); color: var(--text); overflow-wrap: anywhere; }
+
+  footer { margin-top: 80px; padding: 32px 0 48px; border-top: 1px solid var(--line); color: var(--text-3); font-size: 14px; }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; }
+
+  @media (max-width: 640px) {
+    .wrap { padding: 0 16px; }
+    header nav { gap: 14px; font-size: 14px; }
+    header nav .opt { display: none; }
+    .hero { padding-top: 48px; }
+    .btn { width: 100%; justify-content: center; }
+    section { padding-top: 56px; }
+    .keys td { padding: 10px 12px; }
+    .keys td:first-child { width: auto; white-space: normal; }
+    .steps li { padding-left: 60px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <a class="logo" href="#"><img src="images/icon.png" alt=""><span>Quick<span class="brand-cut">Cut</span></span></a>
+    <nav>
+      <a class="opt" href="#features">功能</a>
+      <a class="opt" href="#keys">快捷鍵</a>
+      <a href="#install">安裝</a>
+      <a href="https://github.com/coolalec/QuickCut">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="hero">
+    <div class="wrap">
+      <h1>Quick<span class="brand-cut">Cut</span></h1>
+      <p class="tag">選好起訖點、指定檔案大小，一鍵輸出。<br>簡單、快速、免安裝的 Windows 影片剪輯工具。</p>
+      <div class="cta">
+        <a class="btn primary" id="download" href="https://github.com/coolalec/QuickCut/releases">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+          <span id="download-label">下載 QuickCut</span>
+        </a>
+        <a class="btn" href="https://github.com/coolalec/QuickCut">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.71 1.26 3.37.96.1-.75.4-1.26.73-1.55-2.56-.29-5.25-1.28-5.25-5.68 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.41-2.69 5.38-5.26 5.67.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"/></svg>
+          原始碼
+        </a>
+      </div>
+      <p class="meta" id="download-meta">Windows 10 / 11 · 64 位元 · 免安裝 · 免費開源</p>
+
+      <div class="shot">
+        <picture>
+          <source srcset="images/screenshot-dark.png" media="(prefers-color-scheme: dark)">
+          <img src="images/screenshot-light.png" width="1600" height="862" alt="QuickCut 主畫面：上方是三個分段檔，中間是預覽，下方時間軸已選取 14 秒到 41.5 秒，右側是檔案大小與輸出設定">
+        </picture>
+      </div>
+    </div>
+  </div>
+
+  <section id="features">
+    <div class="wrap">
+      <h2>功能</h2>
+      <p class="lead">不用學剪輯軟體，從開檔到輸出只要幾個步驟。</p>
+      <div class="grid">
+        <div class="card">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M8 6v12M16 6v12"/></svg></div>
+          <h3>多段檔接成一條時間軸</h3>
+          <p>一次拖進多個連續的分段檔，自動依檔名排序接起來，可以跨檔選取；之後也能再加檔案。</p>
+        </div>
+        <div class="card">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h9"/><path d="M17 18h6M20 15v6"/><path d="M8 9h8M8 13h5"/></svg></div>
+          <h3>指定檔案大小</h3>
+          <p>設定大小上限（例如上傳網站限制的 30 MB），自動計算流量；硬體編碼超出時會自動降流量重編。</p>
+        </div>
+        <div class="card">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3"/></svg></div>
+          <h3>顯示卡硬體加速</h3>
+          <p>自動偵測並實際試編，優先使用 NVIDIA NVENC、AMD AMF、Intel QSV，沒有時改用 CPU。</p>
+        </div>
+        <div class="card">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 4 20 12 6 20 6 4"/></svg></div>
+          <h3>有聲預覽、逐格檢視</h3>
+          <p>內建 FFmpeg 解碼，H.265 也能直接播放；支援 ¼ ～ 2 倍速、逐格前後移動、目前畫面存成 PNG。</p>
+        </div>
+        <div class="card">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
+          <h3>無損快速剪輯</h3>
+          <p>不重新編碼、保留原始畫質與解析度，幾秒內完成；起點會對齊關鍵影格並顯示實際起點。</p>
+        </div>
+        <div class="card">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg></div>
+          <h3>直式影片與多種輸出</h3>
+          <p>手機直拍影片維持原始比例；可選 H.264 / H.265、原始 / 1080p / 720p、保留或移除聲音。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="keys">
+    <div class="wrap">
+      <h2>快捷鍵</h2>
+      <p class="lead">常用操作都能用鍵盤完成。</p>
+      <div class="keys">
+        <table>
+          <tr><td><kbd>Space</kbd> 或點畫面</td><td>播放／暫停</td></tr>
+          <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>上一格／下一格</td></tr>
+          <tr><td><kbd>Shift</kbd> + <kbd>←</kbd> <kbd>→</kbd></td><td>前後 1 秒</td></tr>
+          <tr><td><kbd>Ctrl</kbd> + <kbd>←</kbd> <kbd>→</kbd></td><td>前後 10 秒</td></tr>
+          <tr><td><kbd>I</kbd> / <kbd>O</kbd></td><td>以目前畫面設起點／終點</td></tr>
+          <tr><td><kbd>[</kbd> / <kbd>]</kbd></td><td>跳到起點／終點</td></tr>
+          <tr><td><kbd>S</kbd></td><td>目前畫面存成圖片</td></tr>
+          <tr><td><kbd>M</kbd></td><td>預覽聲音開／關</td></tr>
+          <tr><td><kbd>+</kbd> <kbd>-</kbd> <kbd>\</kbd></td><td>放大／縮小時間軸／顯示全部</td></tr>
+          <tr><td>時間軸按右鍵</td><td>把較近的起點或終點移到該處</td></tr>
+          <tr><td><kbd>Ctrl</kbd> + <kbd>O</kbd> / <kbd>Ctrl</kbd> + <kbd>S</kbd></td><td>開啟影片／輸出</td></tr>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="install">
+    <div class="wrap">
+      <h2>安裝與使用</h2>
+      <p class="lead">不需要安裝，解壓就能用。</p>
+      <ol class="steps">
+        <li><strong>下載</strong>：到 <a href="https://github.com/coolalec/QuickCut/releases">Releases</a> 下載最新的 <code>QuickCut-版本-win64.zip</code>（標示 Pre-release 的是測試版）。</li>
+        <li><strong>解壓</strong>：解壓到可寫入的資料夾，例如桌面或 <code>D:\Tools</code>，設定會存在程式旁邊。</li>
+        <li><strong>執行</strong>：開啟 <code>QuickCut\QuickCut.exe</code>。程式沒有數位簽章，若出現「Windows 已保護您的電腦」，按「其他資訊」→「仍要執行」。</li>
+        <li><strong>驗證（選用）</strong>：想確認檔案確實由本專案的 GitHub Actions 建置，可用 GitHub CLI 執行 <code>gh attestation verify QuickCut-版本-win64.zip --repo coolalec/QuickCut</code>。</li>
+      </ol>
+      <p class="lead" style="margin-top:20px">系統需求：Windows 10（1903 以後）或 Windows 11，64 位元；內建 .NET Framework 4.8 即可，不需另外安裝。</p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>QuickCut © coolalec · <a href="https://github.com/coolalec/QuickCut/blob/main/LICENSE">MIT 授權</a></span>
+    <span>附帶 <a href="https://ffmpeg.org/">FFmpeg</a>（gyan.dev 建置，GPLv3）· <a href="https://github.com/coolalec/QuickCut/blob/main/THIRD-PARTY-NOTICES.txt">第三方授權</a></span>
+  </div>
+</footer>
+
+<script>
+  // Point the download button straight at the latest release's zip; without a release it keeps linking to the Releases page.
+  fetch('https://api.github.com/repos/coolalec/QuickCut/releases/latest', { headers: { Accept: 'application/vnd.github+json' } })
+    .then(r => r.ok ? r.json() : Promise.reject(r.status))
+    .then(rel => {
+      const zip = (rel.assets || []).find(a => /\.zip$/i.test(a.name));
+      if (!zip) return;
+      const ver = rel.tag_name.replace(/^v/, '');
+      document.getElementById('download').href = zip.browser_download_url;
+      document.getElementById('download-label').textContent = '下載 v' + ver;
+      const mb = (zip.size / 1048576).toFixed(0);
+      const date = new Date(rel.published_at).toLocaleDateString('zh-TW');
+      document.getElementById('download-meta').textContent = 'Windows 10 / 11 · 64 位元 · ' + mb + ' MB · ' + date + ' 發佈';
+    })
+    .catch(() => {});
+</script>
+</body>
+</html>

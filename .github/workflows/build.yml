@@ -1,0 +1,130 @@
+name: build
+
+# push to main      → build, publish pre-release vX.Y.Z.N (keeps the newest 5)
+# push tag vX.Y.Z   → build, publish release vX.Y.Z
+# promote.yml       → calls this with release_tag to turn a tested pre-release's commit into a release
+# update-ffmpeg.yml → calls this after it commits a new ffmpeg.json (pushes made with GITHUB_TOKEN start no workflows)
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        required: false
+      release_tag:
+        type: string
+        required: false
+
+permissions:
+  contents: write
+  # Build provenance attestations (actions/attest)
+  id-token: write
+  attestations: write
+  artifact-metadata: write
+
+# A newer push to the same branch makes an older, still-running build pointless.
+concurrency:
+  group: build-${{ inputs.release_tag || inputs.ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0 # publish.ps1 derives the version from tags
+
+      - uses: actions/cache@v6
+        with:
+          path: ffmpeg-*-full_build-shared
+          key: ffmpeg-${{ hashFiles('QuickCut/ffmpeg.json') }}
+
+      - name: Build and package
+        id: publish
+        shell: pwsh
+        run: ./QuickCut/publish.ps1 -Zip
+
+      # Lets anyone check a download with: gh attestation verify <file> --repo coolalec/QuickCut
+      - uses: actions/attest@v4
+        with:
+          subject-path: |
+            ${{ steps.publish.outputs.zip }}
+            dist/QuickCut/QuickCut.exe
+
+      # Downloads as a zip whose contents are QuickCut.exe + ffmpeg\, ready to run.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: QuickCut-${{ steps.publish.outputs.version }}
+          path: dist/QuickCut
+          if-no-files-found: error
+          retention-days: 30
+
+      # height 0 means this commit carries the vX.Y.Z tag that publish.ps1 took the version from.
+      - name: Decide what to publish
+        id: kind
+        shell: bash
+        env:
+          HEIGHT: ${{ steps.publish.outputs.height }}
+          VERSION: ${{ steps.publish.outputs.version }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          IS_TAG_PUSH: ${{ startsWith(github.ref, 'refs/tags/v') }}
+          IS_MAIN: ${{ github.ref == 'refs/heads/main' }}
+        run: |
+          if [ "$HEIGHT" = 0 ] && { [ -n "$RELEASE_TAG" ] || [ "$IS_TAG_PUSH" = true ]; }; then
+            echo "kind=release" >> "$GITHUB_OUTPUT"
+            echo "tag=${RELEASE_TAG:-$GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          elif [ "$HEIGHT" != 0 ] && [ -z "$RELEASE_TAG" ] && [ "$IS_MAIN" = true ]; then
+            echo "kind=prerelease" >> "$GITHUB_OUTPUT"
+            echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Release notes
+        if: steps.kind.outputs.kind != ''
+        shell: pwsh
+        run: ./QuickCut/release-notes.ps1 -Tag "${{ steps.kind.outputs.tag }}" -Zip "${{ steps.publish.outputs.zip }}" -Out notes.md
+
+      - name: Create release
+        if: steps.kind.outputs.kind == 'release'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.kind.outputs.tag }}
+          VERSION: ${{ steps.publish.outputs.version }}
+          ZIP: ${{ steps.publish.outputs.zip }}
+        run: gh release create "$TAG" "$ZIP" --title "QuickCut $VERSION" --notes-file notes.md --latest
+
+      - name: Create pre-release
+        if: steps.kind.outputs.kind == 'prerelease'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.kind.outputs.tag }}
+          VERSION: ${{ steps.publish.outputs.version }}
+          ZIP: ${{ steps.publish.outputs.zip }}
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "$TAG already exists"
+            exit 0
+          fi
+          gh release create "$TAG" "$ZIP" --target "$(git rev-parse HEAD)" --prerelease \
+            --title "QuickCut $VERSION" --notes-file notes.md
+
+      - name: Prune old pre-releases
+        if: steps.kind.outputs.kind == 'prerelease'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release list --limit 200 --json tagName,isPrerelease,createdAt \
+            --jq '[.[] | select(.isPrerelease)] | sort_by(.createdAt) | reverse | .[5:] | .[].tagName' |
+          while read -r tag; do
+            tag="${tag%$'\r'}"
+            echo "Deleting pre-release $tag"
+            gh release delete "$tag" --cleanup-tag --yes
+          done
