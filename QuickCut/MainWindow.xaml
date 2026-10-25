@@ -39,6 +39,14 @@
                     </TextBlock>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <!-- Update progress / "restart to update"; shown only while an update is downloading, installing or installed. -->
+                    <Button x:Name="TitleUpdateButton" Style="{StaticResource BadgeButton}" Margin="0,0,10,0" Visibility="Collapsed"
+                            Click="TitleUpdate_Click" WindowChrome.IsHitTestVisibleInChrome="True">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock x:Name="TitleUpdateGlyph" Style="{StaticResource Icon}" FontSize="11" Margin="0,0,7,0"/>
+                            <TextBlock x:Name="TitleUpdateText" FontSize="11.5"/>
+                        </StackPanel>
+                    </Button>
                     <Button x:Name="GpuBadge" Style="{StaticResource BadgeButton}" Margin="0,0,10,0" Background="{DynamicResource HoverBrush}" BorderBrush="{DynamicResource LineBrush}"
                             AutomationProperties.Name="編碼方式" ToolTip="點擊選擇硬體加速或軟體編碼" Click="GpuBadge_Click" WindowChrome.IsHitTestVisibleInChrome="True">
                         <StackPanel Orientation="Horizontal">
@@ -202,13 +210,30 @@
 
                                     <Border Height="1" Background="{DynamicResource LineBrush}" Margin="0,8,0,10"/>
                                     <DockPanel>
-                                        <Button x:Name="RecheckButton" DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Content="重新檢查" Margin="10,0,0,0"
-                                                AutomationProperties.Name="重新檢查更新" Click="RecheckUpdate_Click"/>
                                         <TextBlock x:Name="UpdateGlyph" Style="{StaticResource Icon}" FontSize="12" Margin="0,0,7,0"/>
-                                        <TextBlock x:Name="UpdateText" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                                        <Button x:Name="DownloadUpdateButton" Style="{StaticResource LinkButton}" Content="立即更新" Margin="10,0,0,0" HorizontalAlignment="Left"
-                                                AutomationProperties.Name="下載並安裝新版本" Visibility="Collapsed" Click="DownloadUpdate_Click"/>
+                                        <TextBlock x:Name="UpdateText" VerticalAlignment="Center" TextWrapping="Wrap"/>
                                     </DockPanel>
+                                    <!-- Actions on their own line so a long status ("已安裝 …，重新啟動後生效") never squeezes them out; indented to the status text. -->
+                                    <StackPanel Orientation="Horizontal" Margin="19,4,0,0">
+                                        <Button x:Name="DownloadUpdateButton" Style="{StaticResource LinkButton}" Content="立即更新" FontSize="11.5"
+                                                AutomationProperties.Name="下載並安裝新版本" Visibility="Collapsed" Click="DownloadUpdate_Click"/>
+                                        <TextBlock Text="·" FontSize="11.5" Foreground="{DynamicResource Text3Brush}" Margin="6,0" VerticalAlignment="Center"
+                                                   Visibility="{Binding Visibility, ElementName=DownloadUpdateButton}"/>
+                                        <Button x:Name="RecheckButton" Style="{StaticResource LinkButton}" Content="重新檢查" FontSize="11.5"
+                                                AutomationProperties.Name="重新檢查更新" Click="RecheckUpdate_Click"/>
+                                    </StackPanel>
+                                    <Border Height="1" Background="{DynamicResource LineBrush}" Margin="0,12,0,10"/>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="自動更新" FontSize="12" VerticalAlignment="Center"/>
+                                        <CheckBox x:Name="AutoUpdateSwitch" Style="{StaticResource Switch}" Margin="10,0,0,0" VerticalAlignment="Center"
+                                                  AutomationProperties.Name="自動更新" Checked="AutoUpdate_Changed" Unchecked="AutoUpdate_Changed">
+                                            <CheckBox.LayoutTransform>
+                                                <ScaleTransform ScaleX="0.85" ScaleY="0.85"/>
+                                            </CheckBox.LayoutTransform>
+                                        </CheckBox>
+                                    </StackPanel>
+                                    <TextBlock Text="有新版本時在背景下載安裝，下次啟動生效。" Foreground="{DynamicResource Text3Brush}"
+                                               FontSize="11" TextWrapping="Wrap" Margin="0,5,0,0"/>
                                 </StackPanel>
                             </Border>
                         </Popup>
@@ -536,12 +561,6 @@
                                             <TextBlock Text="刪除"/>
                                         </StackPanel>
                                     </Button>
-                                    <Button Style="{StaticResource MenuItemButton}" Click="NewRegionCancel_Click" AutomationProperties.Name="取消">
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="&#xE711;" Style="{StaticResource Icon}" FontSize="13" Margin="0,0,10,0"/>
-                                            <TextBlock Text="取消"/>
-                                        </StackPanel>
-                                    </Button>
                                 </StackPanel>
                             </Border>
                         </Popup>
@@ -727,7 +746,8 @@
                     <Border Style="{StaticResource KeyCap}"><TextBlock Text="[ / ]"/></Border><TextBlock Text="跳到起訖" Margin="0,0,14,0"/>
                     <Border Style="{StaticResource KeyCap}"><TextBlock Text="S"/></Border><TextBlock Text="存圖" Margin="0,0,14,0"/>
                     <Border Style="{StaticResource KeyCap}"><TextBlock Text="T / D"/></Border><TextBlock Text="從目前位置新增縮時／刪除區段" Margin="0,0,14,0"/>
-                    <Border Style="{StaticResource KeyCap}"><TextBlock Text="Shift＋拖曳"/></Border><TextBlock Text="在時間軸畫出區段"/>
+                    <Border Style="{StaticResource KeyCap}"><TextBlock Text="Shift＋拖曳"/></Border><TextBlock Text="在時間軸畫出區段" Margin="0,0,14,0"/>
+                    <Border Style="{StaticResource KeyCap}"><TextBlock Text="Alt＋拖曳"/></Border><TextBlock Text="移動區段"/>
                 </StackPanel>
             </DockPanel>
         </Border>

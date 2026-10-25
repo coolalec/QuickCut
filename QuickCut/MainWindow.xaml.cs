@@ -153,6 +153,13 @@ public partial class MainWindow : Window
 
     void OnClosing(object sender, CancelEventArgs e)
     {
+        if (applyingUpdate) // exiting halfway through replacing files would leave a broken install
+        {
+            e.Cancel = true;
+            closeWhenInstalled = true;
+            UpdateText.Text = "正在安裝更新，完成後關閉…";
+            return;
+        }
         if (exportCts != null)
         {
             if (MessageBox.Show(this, "正在輸出影片，確定要中止並關閉嗎？", "QuickCut", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
@@ -189,6 +196,10 @@ public partial class MainWindow : Window
         LimitSlider.Value = Clamp(settings.LimitMB, LimitSlider.Minimum, LimitSlider.Maximum);
         LimitBox.Text = settings.LimitMB.ToString("0.#", CultureInfo.InvariantCulture);
         LosslessSwitch.IsChecked = settings.Lossless;
+        AutoUpdateSwitch.IsChecked = settings.AutoUpdate;
+        AutoUpdateSwitch.IsEnabled = Updater.CanSelfUpdate;
+        AutoUpdateSwitch.ToolTip = Updater.CanSelfUpdate ? null : "程式旁沒有 ffmpeg\\bin，無法自動更新";
+        ToolTipService.SetShowOnDisabled(AutoUpdateSwitch, true);
         InspectorCol.Width = new GridLength(Clamp(settings.InspectorWidth, InspectorCol.MinWidth, InspectorCol.MaxWidth));
         LowerRow.Height = new GridLength(Math.Min(LowerRow.MaxHeight, Math.Max(LowerRow.MinHeight, settings.LowerHeight)));
         ApplyLosslessUi();
@@ -406,6 +417,8 @@ public partial class MainWindow : Window
             }
             s.Peaks = prev.Peaks;
             s.PeakInterval = prev.PeakInterval;
+            s.RoughPeaks = prev.RoughPeaks;
+            s.RoughInterval = prev.RoughInterval;
             s.Thumbs = prev.Thumbs;
         }
         foreach (var o in old.Where(o => !medias.Contains(o.Media)))
@@ -819,19 +832,54 @@ public partial class MainWindow : Window
     {
         analysisCts?.Cancel();
         var cts = analysisCts = new CancellationTokenSource();
-        try
+        // Thumbnails aren't made here: the timeline asks each segment's ThumbnailStrip for the ones it shows.
+        // The full waveform reads the whole file, slow on a slow disk, so every file first gets a rough one
+        // from a few seeks; each full one then replaces it in one go. A few files at a time.
+        await ForEachSegment(tl.Segments.Where(x => x.Peaks == null && x.RoughPeaks == null), async s =>
         {
-            // Thumbnails aren't made here: the timeline asks each segment's ThumbnailStrip for the ones it shows.
-            foreach (var s in tl.Segments.Where(x => x.Peaks == null))
-            {
-                var peaks = await Task.Run(() => MediaAnalyzer.WaveformAsync(s.Media, cts.Token));
-                s.PeakInterval = MediaAnalyzer.PeakInterval;
-                s.Peaks = peaks;
-                TimelineView.InvalidateVisual();
-            }
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex) { AppendLog("波形產生失敗: " + ex.Message); }
+            var (peaks, interval) = await Task.Run(() => MediaAnalyzer.RoughWaveformAsync(s.Media, cts.Token));
+            if (cts.IsCancellationRequested) return;
+            s.RoughInterval = interval;
+            s.RoughPeaks = peaks;
+            QueueWaveRedraw();
+        }, "粗略波形產生失敗");
+        if (cts.IsCancellationRequested) return;
+
+        await ForEachSegment(tl.Segments.Where(x => x.Peaks == null), async s =>
+        {
+            var peaks = await Task.Run(() => MediaAnalyzer.WaveformAsync(s.Media, cts.Token));
+            if (cts.IsCancellationRequested) return;
+            s.PeakInterval = MediaAnalyzer.PeakInterval;
+            s.Peaks = peaks;
+            QueueWaveRedraw();
+        }, "波形產生失敗");
+    }
+
+    /// <summary>Runs <paramref name="work"/> on a few segments at a time; one failing is logged and doesn't stop the rest.</summary>
+    async Task ForEachSegment(IEnumerable<Segment> segments, Func<Segment, Task> work, string failure)
+    {
+        using var slots = new SemaphoreSlim(Math.Min(4, Math.Max(2, Environment.ProcessorCount / 2)));
+        await Task.WhenAll(segments.ToList().Select(async s =>
+        {
+            await slots.WaitAsync();
+            try { await work(s); }
+            catch (OperationCanceledException) { }
+            catch (Exception ex) { AppendLog($"{failure}（{s.Name}）: " + ex.Message); }
+            finally { slots.Release(); }
+        }));
+    }
+
+    int waveRedrawQueued;
+
+    /// <summary>Redraws the timeline once for however many waveform updates arrived since the last redraw.</summary>
+    void QueueWaveRedraw()
+    {
+        if (Interlocked.Exchange(ref waveRedrawQueued, 1) == 1) return;
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+        {
+            waveRedrawQueued = 0;
+            TimelineView.InvalidateVisual();
+        }));
     }
 
     int thumbRedrawQueued;
@@ -1015,6 +1063,7 @@ public partial class MainWindow : Window
 
         switch (key)
         {
+            case Key.Escape when NewRegionPopup.IsOpen: NewRegionPopup.IsOpen = false; break;
             case Key.O when ctrl: Open_Click(this, null); break;
             case Key.S when ctrl: if (ExportButton.IsEnabled) Export_Click(this, null); break;
             case Key.S: SaveFrame_Click(this, null); break;
@@ -1345,8 +1394,6 @@ public partial class MainWindow : Window
         NewRegionPopup.IsOpen = false;
         AddRegion((RegionKind)Enum.Parse(typeof(RegionKind), (string)((FrameworkElement)sender).Tag), newRegionStart, newRegionEnd);
     }
-
-    void NewRegionCancel_Click(object sender, RoutedEventArgs e) => NewRegionPopup.IsOpen = false;
 
     void NewRegionPopup_Closed(object sender, EventArgs e) => TimelineView.ClearPending();
 
@@ -1778,8 +1825,11 @@ public partial class MainWindow : Window
     bool checkingUpdate;
     bool ffmpegVersionRead;
     UpdateResult latestRelease;
-    bool updating;
-    bool selfUpdateFailed; // after a failed install the button only opens the release page
+    bool updating;            // downloading or installing
+    bool applyingUpdate;      // replacing files; closing waits for it
+    bool closeWhenInstalled;  // the window was closed while files were being replaced
+    bool selfUpdateFailed;    // after a failed install the button only opens the release page
+    string installedTag;      // installed during this session, takes effect on restart
 
     void AboutButton_Click(object sender, RoutedEventArgs e)
     {
@@ -1816,7 +1866,7 @@ public partial class MainWindow : Window
 
     async void CheckForUpdates()
     {
-        if (checkingUpdate || updating) return;
+        if (checkingUpdate || updating || installedTag != null) return;
         checkingUpdate = true;
         RecheckButton.IsEnabled = false;
         ShowUpdateState(null);
@@ -1827,6 +1877,16 @@ public partial class MainWindow : Window
         ShowUpdateState(r);
         if (r.State == UpdateState.Available) AppendLog($"有新版本 {r.LatestTag}（目前 v{UpdateChecker.DisplayVersion}）: {r.ReleaseUrl}");
         else if (r.State == UpdateState.Unknown) AppendLog("無法檢查更新: " + r.Error);
+        if (r.State == UpdateState.Available && settings.AutoUpdate && CanInstall(r)) _ = InstallUpdateAsync(r, restart: false);
+    }
+
+    void AutoUpdate_Changed(object sender, RoutedEventArgs e)
+    {
+        if (loadingUi) return;
+        settings.AutoUpdate = AutoUpdateSwitch.IsChecked == true;
+        var r = latestRelease;
+        if (settings.AutoUpdate && !updating && installedTag == null && r?.State == UpdateState.Available && CanInstall(r))
+            _ = InstallUpdateAsync(r, restart: false);
     }
 
     bool CanInstall(UpdateResult r) =>
@@ -1890,6 +1950,11 @@ public partial class MainWindow : Window
 
     async void DownloadUpdate_Click(object sender, RoutedEventArgs e)
     {
+        if (installedTag != null)
+        {
+            RestartIntoNewVersion(installedTag);
+            return;
+        }
         var release = latestRelease;
         if (!CanInstall(release))
         {
@@ -1901,36 +1966,48 @@ public partial class MainWindow : Window
             ShowResult(false, "正在輸出影片", "請等輸出完成後再更新。", warn: true);
             return;
         }
+        await InstallUpdateAsync(release, restart: true);
+    }
 
+    /// <summary>
+    /// Downloads and installs <paramref name="release"/>, waiting for a running export before replacing files.
+    /// Then restarts into it, or (in the background, or if an export ran meanwhile) leaves it for the next start.
+    /// </summary>
+    async Task InstallUpdateAsync(UpdateResult release, bool restart)
+    {
+        if (updating) return;
         updating = true;
         DownloadUpdateButton.IsEnabled = RecheckButton.IsEnabled = false;
         UpdateText.ToolTip = null;
         UpdateText.Text = "正在下載 " + release.LatestTag + "…";
+        ShowTitleUpdate(DownloadGlyph, "正在下載 " + release.LatestTag, "正在下載新版本，可繼續使用", ready: false);
         AppendLog($"下載更新 {release.LatestTag}: {release.AssetUrl}");
         try
         {
-            var progress = new Progress<double>(p => UpdateText.Text = $"正在下載 {release.LatestTag}… {p:0%}");
+            var progress = new Progress<double>(p =>
+            {
+                UpdateText.Text = $"正在下載 {release.LatestTag}… {p:0%}";
+                TitleUpdateText.Text = $"正在下載 {release.LatestTag} {p:0%}";
+            });
             var newDir = await Updater.DownloadAsync(release, progress);
+            if (exportCts != null) // FFmpeg is busy with the export; replacing it mid-way could mix versions
+            {
+                restart = false;   // restarting would also hide the export's result
+                UpdateText.Text = "等待輸出完成後安裝…";
+                ShowTitleUpdate(DownloadGlyph, "輸出完成後安裝更新", "新版本已下載，輸出完成後會自動安裝", ready: false);
+                while (exportCts != null) await Task.Delay(1000);
+            }
             UpdateText.Text = "正在安裝…";
+            ShowTitleUpdate(DownloadGlyph, "正在安裝更新…", "正在安裝 " + release.LatestTag, ready: false);
             var appDir = AppDomain.CurrentDomain.BaseDirectory;
-            await Task.Run(() => Updater.Apply(newDir, appDir));
+            applyingUpdate = true;
+            try { await Task.Run(() => Updater.Apply(newDir, appDir)); }
+            finally { applyingUpdate = false; }
             AppendLog("已安裝 " + release.LatestTag);
 
-            if (exportCts != null) // started while downloading; restarting would cut it off
-            {
-                UpdateText.Text = "已安裝 " + release.LatestTag + "，重新啟動後生效";
-                DownloadUpdateButton.Visibility = Visibility.Collapsed;
-                return;
-            }
-            // Reopen the same videos in the new version once this window has saved its settings and closed.
-            var args = string.Join(" ", (timeline?.Segments ?? Enumerable.Empty<Segment>()).Select(s => "\"" + s.Media.Path + "\""));
-            var exe = Path.Combine(appDir, "QuickCut.exe");
-            Closed += (_, _) =>
-            {
-                try { Process.Start(new ProcessStartInfo(exe, args) { UseShellExecute = false, WorkingDirectory = appDir }); }
-                catch (Exception ex) { MessageBox.Show("已更新到 " + release.LatestTag + "，但無法重新啟動：" + ex.Message, "QuickCut"); }
-            };
-            Close();
+            if (closeWhenInstalled) Close();
+            else if (restart) RestartIntoNewVersion(release.LatestTag);
+            else ShowRestartPending(release.LatestTag);
         }
         catch (Exception ex)
         {
@@ -1942,12 +2019,74 @@ public partial class MainWindow : Window
             UpdateGlyph.SetResourceReference(ForegroundProperty, "Text3Brush");
             UpdateText.SetResourceReference(ForegroundProperty, "Text3Brush");
             SetDownloadButton(false);
+            TitleUpdateButton.Visibility = Visibility.Collapsed; // the About popup tells what went wrong
+            if (closeWhenInstalled) Close(); // Apply has put the old files back
         }
         finally
         {
             updating = false;
-            DownloadUpdateButton.IsEnabled = RecheckButton.IsEnabled = true;
+            DownloadUpdateButton.IsEnabled = true;
+            RecheckButton.IsEnabled = installedTag == null;
         }
+    }
+
+    void ShowRestartPending(string tag)
+    {
+        installedTag = tag;
+        UpdateGlyph.Text = ""; // Completed
+        UpdateGlyph.SetResourceReference(ForegroundProperty, "AccentBrush");
+        UpdateText.Text = $"已安裝 {tag}，重新啟動後生效";
+        UpdateText.SetResourceReference(ForegroundProperty, "TextBrush");
+        UpdateBadge.Visibility = DownloadUpdateButton.Visibility = Visibility.Visible;
+        DownloadUpdateButton.Content = "立即重新啟動";
+        AutomationProperties.SetName(DownloadUpdateButton, "重新啟動以使用新版本");
+        AboutButton.ToolTip = $"關於 QuickCut（已安裝 {tag}，重新啟動後生效）";
+        ShowTitleUpdate("", "重新啟動以更新到 " + tag, $"已安裝 {tag}，點一下重新啟動並重新開啟目前的影片", ready: true);
+    }
+
+    const string DownloadGlyph = "";
+
+    /// <summary>The title-bar badge: progress while downloading or installing, a highlighted "restart" once installed.</summary>
+    void ShowTitleUpdate(string glyph, string text, string tip, bool ready)
+    {
+        TitleUpdateGlyph.Text = glyph;
+        TitleUpdateText.Text = text;
+        TitleUpdateButton.ToolTip = tip;
+        AutomationProperties.SetName(TitleUpdateButton, ready ? text : "更新狀態：" + text);
+        TitleUpdateButton.SetResourceReference(BackgroundProperty, ready ? "VersionBackBrush" : "HoverBrush");
+        TitleUpdateButton.SetResourceReference(BorderBrushProperty, ready ? "VersionLineBrush" : "LineBrush");
+        TitleUpdateGlyph.SetResourceReference(ForegroundProperty, ready ? "VersionTextBrush" : "Text3Brush");
+        TitleUpdateText.SetResourceReference(ForegroundProperty, ready ? "VersionTextBrush" : "Text2Brush");
+        TitleUpdateButton.Visibility = Visibility.Visible;
+    }
+
+    void TitleUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        if (installedTag != null) RestartIntoNewVersion(installedTag);
+        else
+        {
+            AboutPopup.IsOpen = true; // shows the download in detail
+            ReadFfmpegVersion();
+        }
+    }
+
+    /// <summary>Reopens the same videos in the new version once this window has saved its settings and closed.</summary>
+    void RestartIntoNewVersion(string tag)
+    {
+        if (exportCts != null)
+        {
+            ShowResult(false, "正在輸出影片", "請等輸出完成後再重新啟動。", warn: true);
+            return;
+        }
+        var appDir = AppDomain.CurrentDomain.BaseDirectory;
+        var args = string.Join(" ", (timeline?.Segments ?? Enumerable.Empty<Segment>()).Select(s => "\"" + s.Media.Path + "\""));
+        var exe = Path.Combine(appDir, "QuickCut.exe");
+        Closed += (_, _) =>
+        {
+            try { Process.Start(new ProcessStartInfo(exe, args) { UseShellExecute = false, WorkingDirectory = appDir }); }
+            catch (Exception ex) { MessageBox.Show("已更新到 " + tag + "，但無法重新啟動：" + ex.Message, "QuickCut"); }
+        };
+        Close();
     }
 
     void OpenUrl(string url)

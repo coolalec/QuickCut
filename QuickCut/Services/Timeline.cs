@@ -22,6 +22,8 @@ public sealed class Segment
     // Filled in asynchronously by MediaAnalyzer; read by the timeline control.
     public float[] Peaks { get; set; }
     public double PeakInterval { get; set; }
+    public float[] RoughPeaks { get; set; } // from a few seeks, shown until Peaks is done
+    public double RoughInterval { get; set; }
     public ThumbnailStrip Thumbs { get; set; }
 }
 

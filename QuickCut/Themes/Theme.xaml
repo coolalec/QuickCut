@@ -310,6 +310,9 @@
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="cp" Property="Opacity" Value="0.75"/>
                         </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="cp" Property="Opacity" Value="0.45"/>
+                        </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>

@@ -116,6 +116,9 @@ public sealed class TimelineControl : FrameworkElement
     TimeRegion RegionAt(double t) => regions.FirstOrDefault(r => r.Contains(t));
     bool InCut(double t) => regions.Any(r => r.Kind == RegionKind.Cut && r.Contains(t));
 
+    static float? PeakAt(float[] peaks, double interval, double local) =>
+        peaks == null || peaks.Length == 0 || interval <= 0 ? null : peaks[Math.Min(peaks.Length - 1, (int)(local / interval))];
+
     /// <summary>Raised when the visible window changes; the argument is true when the user zoomed or scrolled it directly.</summary>
     public event Action<bool> ViewChanged;
 
@@ -261,9 +264,10 @@ public sealed class TimelineControl : FrameworkElement
             double t = T(x + 1);
             timeline.Locate(t, out var si, out var local);
             var seg = timeline.Segments[si];
-            if (seg.Peaks == null || seg.Peaks.Length == 0) continue;
-            int pi = Math.Min(seg.Peaks.Length - 1, (int)(local / seg.PeakInterval));
-            double hgt = Math.Max(1, seg.Peaks[pi] * (WaveH - 4));
+            // The full waveform once it is done, the rough one until then.
+            float? level = PeakAt(seg.Peaks, seg.PeakInterval, local) ?? PeakAt(seg.RoughPeaks, seg.RoughInterval, local);
+            if (level == null) continue;
+            double hgt = Math.Max(1, level.Value * (WaveH - 4));
             bool inside = t >= inPoint && t <= outPoint && !InCut(t);
             dc.DrawRoundedRectangle(inside ? WaveActive : WaveIdle, null, new Rect(x, mid - hgt / 2, 2, hgt), 1, 1);
         }
